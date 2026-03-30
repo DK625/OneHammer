@@ -1,0 +1,11 @@
+{
+  "tool_calls": 28,
+  "total_steps": 29,
+  "errors_encountered": 1,
+  "output_chars": 27599,
+  "transcript_chars": 27599,
+  "command": "codex review --uncommitted",
+  "model": "gpt-5.4",
+  "reasoning_effort": "xhigh",
+  "duration_seconds": 180
+}

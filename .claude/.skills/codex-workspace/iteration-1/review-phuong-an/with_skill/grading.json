@@ -1,0 +1,15 @@
+{
+  "expectations": [
+    {"text": "The command uses 'codex exec' (NOT 'codex exec review') since this is an options review, not a code review", "passed": true, "evidence": "Command: codex exec -m gpt-5.4 -c model_reasoning_effort='xhigh' ... (no 'review' subcommand)"},
+    {"text": "The command includes all 3 options in the prompt (SQLite WAL, PostgreSQL pooling, Redis cache)", "passed": true, "evidence": "Prompt includes all 3 options: 'Option 1: Dùng SQLite với WAL mode. Option 2: Dùng PostgreSQL với connection pooling. Option 3: Dùng Redis cache layer phía trước SQLite.'"},
+    {"text": "The prompt includes context about 10000 concurrent users", "passed": true, "evidence": "Prompt includes: 'Context: đang build hệ thống tracking cho 10000 concurrent users.'"},
+    {"text": "The command includes '-m gpt-5.4' to specify the correct model", "passed": true, "evidence": "Command includes -m gpt-5.4"},
+    {"text": "The command includes 'model_reasoning_effort=xhigh'", "passed": true, "evidence": "Command includes -c model_reasoning_effort='xhigh'"},
+    {"text": "The command includes 'mcp_servers.mcp_agent_mail.enabled=false'", "passed": true, "evidence": "Command includes -c mcp_servers.mcp_agent_mail.enabled=false"},
+    {"text": "The output contains Codex/GPT analysis evaluating the options", "passed": true, "evidence": "Full analysis with evaluation table, per-option breakdown, and recommendation (PostgreSQL + pooling)"},
+    {"text": "The agent presents the analysis with some framing or synthesis", "passed": true, "evidence": "Result presented with command, model info, and full structured analysis"}
+  ],
+  "summary": {"passed": 8, "failed": 0, "total": 8, "pass_rate": 1.0},
+  "claims": [],
+  "eval_feedback": {"suggestions": [], "overall": "Perfect execution of the skill instructions for options review."}
+}

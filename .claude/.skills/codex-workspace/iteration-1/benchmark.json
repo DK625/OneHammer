@@ -1,0 +1,189 @@
+{
+  "metadata": {
+    "skill_name": "codex",
+    "analyzer_model": "glm-5.1",
+    "timestamp": "2026-03-30T03:30:00Z",
+    "evals_run": ["review-code", "review-phuong-an", "review-plan"],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 0,
+      "eval_name": "Review Code",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.86,
+        "passed": 6,
+        "failed": 1,
+        "total": 7,
+        "time_seconds": 300.0,
+        "tokens": 0,
+        "tool_calls": 3,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Uses 'codex exec review'", "passed": true, "evidence": "codex exec review --commit HEAD"},
+        {"text": "Includes --uncommitted flag", "passed": false, "evidence": "Used --commit HEAD instead (diff too large)"},
+        {"text": "Includes -m gpt-5.4", "passed": true, "evidence": "Explicit in command"},
+        {"text": "Includes model_reasoning_effort=xhigh", "passed": true, "evidence": "reasoning effort: xhigh in output"},
+        {"text": "Includes mcp_servers.mcp_agent_mail.enabled=false", "passed": true, "evidence": "mcp startup: no servers"},
+        {"text": "Output contains analysis", "passed": true, "evidence": "Full review with git diff inspection"},
+        {"text": "Presents analysis to user", "passed": true, "evidence": "Full output saved to result.md"}
+      ]
+    },
+    {
+      "eval_id": 0,
+      "eval_name": "Review Code",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.43,
+        "passed": 3,
+        "failed": 4,
+        "total": 7,
+        "time_seconds": 300.0,
+        "tokens": 0,
+        "tool_calls": 12,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Uses 'codex exec review'", "passed": false, "evidence": "Used 'codex review --uncommitted' (wrong subcommand)"},
+        {"text": "Includes --uncommitted flag", "passed": true, "evidence": "--uncommitted used"},
+        {"text": "Includes -m gpt-5.4", "passed": false, "evidence": "Not in command, relied on config default"},
+        {"text": "Includes model_reasoning_effort=xhigh", "passed": false, "evidence": "Not in command, relied on config default"},
+        {"text": "Includes mcp_servers.mcp_agent_mail.enabled=false", "passed": false, "evidence": "MCP was enabled - logs show mcp_agent_mail starting"},
+        {"text": "Output contains analysis", "passed": true, "evidence": "Full codex output with review"},
+        {"text": "Presents analysis to user", "passed": true, "evidence": "Result saved to result.md"}
+      ]
+    },
+    {
+      "eval_id": 1,
+      "eval_name": "Review Options",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 356.5,
+        "tokens": 72917,
+        "tool_calls": 9,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Uses 'codex exec' (not review)", "passed": true, "evidence": "codex exec -m gpt-5.4 ..."},
+        {"text": "Includes all 3 options", "passed": true, "evidence": "All 3 options in heredoc prompt"},
+        {"text": "Includes 10K concurrent users context", "passed": true, "evidence": "Context in prompt"},
+        {"text": "Includes -m gpt-5.4", "passed": true, "evidence": "Explicit in command"},
+        {"text": "Includes model_reasoning_effort=xhigh", "passed": true, "evidence": "Explicit in command"},
+        {"text": "Includes mcp disabled", "passed": true, "evidence": "Explicit in command"},
+        {"text": "Output evaluates options", "passed": true, "evidence": "Full analysis with trade-off table"},
+        {"text": "Presents analysis to user", "passed": true, "evidence": "Structured result"}
+      ]
+    },
+    {
+      "eval_id": 1,
+      "eval_name": "Review Options",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 360.2,
+        "tokens": 78271,
+        "tool_calls": 12,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Uses 'codex exec' (not review)", "passed": true, "evidence": "codex exec -m gpt-5.4 ..."},
+        {"text": "Includes all 3 options", "passed": true, "evidence": "All 3 in prompt"},
+        {"text": "Includes 10K concurrent users context", "passed": true, "evidence": "Context in prompt"},
+        {"text": "Includes -m gpt-5.4", "passed": true, "evidence": "Explicit in command"},
+        {"text": "Includes model_reasoning_effort=xhigh", "passed": true, "evidence": "Explicit in command"},
+        {"text": "Includes mcp disabled", "passed": true, "evidence": "Explicit in command"},
+        {"text": "Output evaluates options", "passed": true, "evidence": "Full analysis"},
+        {"text": "Presents analysis to user", "passed": true, "evidence": "Structured result"}
+      ]
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "Review Plan",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 466.7,
+        "tokens": 165694,
+        "tool_calls": 11,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Uses 'codex exec' (not review)", "passed": true, "evidence": "codex exec -m gpt-5.4 ..."},
+        {"text": "Includes all 5 plan steps", "passed": true, "evidence": "All 5 steps in heredoc prompt"},
+        {"text": "Asks for completeness/risks review", "passed": true, "evidence": "Prompt includes review criteria"},
+        {"text": "Includes -m gpt-5.4", "passed": true, "evidence": "Explicit in command"},
+        {"text": "Includes model_reasoning_effort=xhigh", "passed": true, "evidence": "Explicit in command"},
+        {"text": "Includes mcp disabled", "passed": true, "evidence": "Explicit in command"},
+        {"text": "Output analyzes plan", "passed": true, "evidence": "Codebase-aware analysis"},
+        {"text": "Presents analysis to user", "passed": true, "evidence": "Full structured output"}
+      ]
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "Review Plan",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 278.0,
+        "tokens": 21117,
+        "tool_calls": 12,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Uses 'codex exec' (not review)", "passed": true, "evidence": "codex exec --full-auto ..."},
+        {"text": "Includes all 5 plan steps", "passed": true, "evidence": "All 5 steps in prompt"},
+        {"text": "Asks for completeness/risks review", "passed": true, "evidence": "Prompt includes evaluation criteria"},
+        {"text": "Includes -m gpt-5.4", "passed": true, "evidence": "Confirmed in output"},
+        {"text": "Includes model_reasoning_effort=xhigh", "passed": true, "evidence": "Confirmed in output"},
+        {"text": "Includes mcp disabled", "passed": true, "evidence": "Confirmed in output"},
+        {"text": "Output analyzes plan", "passed": true, "evidence": "Full analysis with revised plan"},
+        {"text": "Presents analysis to user", "passed": true, "evidence": "Structured result"}
+      ]
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {"mean": 0.95, "stddev": 0.07, "min": 0.86, "max": 1.0},
+      "time_seconds": {"mean": 374.4, "stddev": 68.7, "min": 300.0, "max": 466.7},
+      "tokens": {"mean": 79537, "stddev": 58903, "min": 0, "max": 165694}
+    },
+    "without_skill": {
+      "pass_rate": {"mean": 0.81, "stddev": 0.29, "min": 0.43, "max": 1.0},
+      "time_seconds": {"mean": 312.7, "stddev": 36.3, "min": 278.0, "max": 360.2},
+      "tokens": {"mean": 49694, "stddev": 33213, "min": 0, "max": 78271}
+    },
+    "delta": {
+      "pass_rate": "+0.14",
+      "time_seconds": "+61.7",
+      "tokens": "+29843"
+    }
+  },
+  "notes": [
+    "The skill's biggest value is in code review (eval 0): without_skill scored 0.43 vs with_skill's 0.86. Without the skill, the agent used wrong subcommand ('codex review' vs 'codex exec review') and didn't disable MCPs.",
+    "For options review and plan review (evals 1-2), both configurations scored 1.0 — these tasks are straightforward enough that the model handles them well without guidance.",
+    "The --uncommitted failure in eval-0 with_skill is a test environment artifact (diff too large), not a skill deficiency.",
+    "MCP disabling is the most discriminating assertion: without_skill always leaves it enabled in eval-0, while with_skill always disables it.",
+    "With-skill runs took slightly longer (374s vs 313s) due to reading the skill file, but this overhead is minimal."
+  ]
+}

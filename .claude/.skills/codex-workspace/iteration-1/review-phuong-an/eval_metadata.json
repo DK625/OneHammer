@@ -1,0 +1,15 @@
+{
+  "eval_id": 1,
+  "eval_name": "review-phuong-an",
+  "prompt": "cho codex xem các phương án này: Option 1: Dùng SQLite với WAL mode. Option 2: Dùng PostgreSQL với connection pooling. Option 3: Dùng Redis cache layer phía trước SQLite. Context: đang build hệ thống tracking cho 10000 concurrent users.",
+  "assertions": [
+    "The command uses 'codex exec' (NOT 'codex exec review') since this is an options review, not a code review",
+    "The command includes all 3 options in the prompt (SQLite WAL, PostgreSQL pooling, Redis cache)",
+    "The prompt includes context about 10000 concurrent users",
+    "The command includes '-m gpt-5.4' to specify the correct model",
+    "The command includes 'model_reasoning_effort=xhigh'",
+    "The command includes 'mcp_servers.mcp_agent_mail.enabled=false'",
+    "The output contains Codex/GPT analysis evaluating the options",
+    "The agent presents the analysis with some framing or synthesis"
+  ]
+}

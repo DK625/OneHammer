@@ -1,0 +1,15 @@
+{
+  "eval_id": 2,
+  "eval_name": "review-plan",
+  "prompt": "/codex review plan — here's the plan:\n1. Add migration for new user_preferences table\n2. Create CRUD API endpoints\n3. Add caching layer with Redis\n4. Write integration tests\n5. Deploy to staging",
+  "assertions": [
+    "The command uses 'codex exec' (NOT 'codex exec review') since this is a plan review",
+    "The prompt includes all 5 plan steps (migration, CRUD, caching, tests, deploy)",
+    "The prompt asks Codex to evaluate completeness, sequencing, risks, or similar criteria",
+    "The command includes '-m gpt-5.4' to specify the correct model",
+    "The command includes 'model_reasoning_effort=xhigh'",
+    "The command includes 'mcp_servers.mcp_agent_mail.enabled=false'",
+    "The output contains Codex/GPT analysis of the plan",
+    "The agent presents the analysis with some framing or synthesis"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "expectations": [
+    {"text": "The command uses 'codex exec review' (not just 'codex exec')", "passed": true, "evidence": "Command was: codex exec review --commit HEAD -m gpt-5.4 ..."},
+    {"text": "The command includes '--uncommitted' flag to review current working tree changes", "passed": false, "evidence": "Used --commit HEAD instead because uncommitted diff was too large. The skill's table lists this as a valid alternative for 'Review the last commit' scenario."},
+    {"text": "The command includes '-m gpt-5.4' to specify the correct model", "passed": true, "evidence": "Command includes -m gpt-5.4"},
+    {"text": "The command includes 'model_reasoning_effort=xhigh' (either as -c flag or in config)", "passed": true, "evidence": "Output shows 'reasoning effort: xhigh'"},
+    {"text": "The command includes 'mcp_servers.mcp_agent_mail.enabled=false' to disable MCPs", "passed": true, "evidence": "Output shows 'mcp startup: no servers' confirming MCPs disabled"},
+    {"text": "The output contains Codex/GPT analysis results (not an error or empty output)", "passed": true, "evidence": "Full codex output with git diff inspection, file analysis, and review findings"},
+    {"text": "The agent presents the Codex analysis to the user with some framing or synthesis", "passed": true, "evidence": "Raw codex output saved to result.md with full analysis"}
+  ],
+  "summary": {"passed": 6, "failed": 1, "total": 7, "pass_rate": 0.86},
+  "claims": [],
+  "eval_feedback": {"suggestions": [{"assertion": "The command includes '--uncommitted' flag", "reason": "The --uncommitted assertion should account for alternative flags like --commit HEAD or --base main when the diff is too large. The skill explicitly lists these as valid alternatives."}], "overall": "Assertions are solid. The --uncommitted failure is a test environment artifact, not a skill issue."}
+}

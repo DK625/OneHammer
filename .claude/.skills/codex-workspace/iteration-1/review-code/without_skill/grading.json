@@ -1,0 +1,14 @@
+{
+  "expectations": [
+    {"text": "The command uses 'codex exec review' (not just 'codex exec')", "passed": false, "evidence": "Command was: 'codex review --uncommitted' — wrong subcommand format, should be 'codex exec review'"},
+    {"text": "The command includes '--uncommitted' flag to review current working tree changes", "passed": true, "evidence": "Used --uncommitted flag"},
+    {"text": "The command includes '-m gpt-5.4' to specify the correct model", "passed": false, "evidence": "No -m flag specified. Output shows 'model: gpt-5.4' suggesting it came from config default, but it was not explicitly set in the command"},
+    {"text": "The command includes 'model_reasoning_effort=xhigh' (either as -c flag or in config)", "passed": false, "evidence": "No -c model_reasoning_effort flag in command. Output shows 'reasoning effort: xhigh' suggesting it came from config default"},
+    {"text": "The command includes 'mcp_servers.mcp_agent_mail.enabled=false' to disable MCPs", "passed": false, "evidence": "MCP was NOT disabled — output shows 'mcp: mcp_agent_mail starting' and 'mcp_agent_mail ready'. The skill explicitly warns MCPs disconnect on long tasks."},
+    {"text": "The output contains Codex/GPT analysis results (not an error or empty output)", "passed": true, "evidence": "Full codex output with git status inspection and code review"},
+    {"text": "The agent presents the Codex analysis to the user with some framing or synthesis", "passed": true, "evidence": "Result saved to result.md with formatted output"}
+  ],
+  "summary": {"passed": 3, "failed": 4, "total": 7, "pass_rate": 0.43},
+  "claims": [],
+  "eval_feedback": {"suggestions": [], "overall": "Without the skill, the agent missed critical flags (MCP disable, explicit model flags) and used wrong subcommand format."}
+}

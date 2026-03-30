@@ -1,0 +1,14 @@
+{
+  "eval_id": 0,
+  "eval_name": "review-code",
+  "prompt": "/codex review code",
+  "assertions": [
+    "The command uses 'codex exec review' (not just 'codex exec')",
+    "The command includes '--uncommitted' flag to review current working tree changes",
+    "The command includes '-m gpt-5.4' to specify the correct model",
+    "The command includes 'model_reasoning_effort=xhigh' (either as -c flag or in config)",
+    "The command includes 'mcp_servers.mcp_agent_mail.enabled=false' to disable MCPs",
+    "The output contains Codex/GPT analysis results (not an error or empty output)",
+    "The agent presents the Codex analysis to the user with some framing or synthesis"
+  ]
+}

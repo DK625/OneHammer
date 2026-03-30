@@ -1,0 +1,12 @@
+{
+  "tool_calls": 1,
+  "total_steps": 1,
+  "errors_encountered": 0,
+  "output_chars": 5487,
+  "transcript_chars": 6212,
+  "command": "codex exec --full-auto",
+  "model": "gpt-5.4",
+  "reasoning_effort": "xhigh",
+  "tokens_used": 21117,
+  "session_id": "019d3cae-6235-79c1-b042-39c823b61836"
+}

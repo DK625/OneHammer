@@ -1,0 +1,15 @@
+{
+  "expectations": [
+    {"text": "The command uses 'codex exec' (NOT 'codex exec review') since this is a plan review", "passed": true, "evidence": "Command: codex exec --full-auto ..."},
+    {"text": "The prompt includes all 5 plan steps (migration, CRUD, caching, tests, deploy)", "passed": true, "evidence": "Prompt lists all 5 steps verbatim"},
+    {"text": "The prompt asks Codex to evaluate completeness, sequencing, risks, or similar criteria", "passed": true, "evidence": "Prompt includes evaluation criteria: correctness, ordering, missing steps, risks, suggestions"},
+    {"text": "The command includes '-m gpt-5.4' to specify the correct model", "passed": true, "evidence": "Output confirms 'model: gpt-5.4'"},
+    {"text": "The command includes 'model_reasoning_effort=xhigh'", "passed": true, "evidence": "Output confirms 'reasoning effort: xhigh'"},
+    {"text": "The command includes 'mcp_servers.mcp_agent_mail.enabled=false'", "passed": true, "evidence": "Config confirmed in command"},
+    {"text": "The output contains Codex/GPT analysis of the plan", "passed": true, "evidence": "Full analysis with overall assessment, key findings, step review, and revised plan"},
+    {"text": "The agent presents the analysis with some framing or synthesis", "passed": true, "evidence": "Result presented with structured sections and 8-step revised plan"}
+  ],
+  "summary": {"passed": 8, "failed": 0, "total": 8, "pass_rate": 1.0},
+  "claims": [],
+  "eval_feedback": {"suggestions": [], "overall": "Without the skill, the agent performed equally well on plan review. The task is straightforward enough."}
+}

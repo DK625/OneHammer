@@ -1,0 +1,52 @@
+{
+  "skill_name": "codex",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "/codex review code",
+      "expected_output": "Agent should identify this as a code review, run codex exec review with --uncommitted flag, include all required flags, and present Codex's analysis to the user.",
+      "files": [],
+      "assertions": [
+        "The command uses 'codex exec review' (not just 'codex exec')",
+        "The command includes '--uncommitted' flag to review current working tree changes",
+        "The command includes '-m gpt-5.4' to specify the correct model",
+        "The command includes 'model_reasoning_effort=xhigh' (either as -c flag or in config)",
+        "The command includes 'mcp_servers.mcp_agent_mail.enabled=false' to disable MCPs",
+        "The output contains Codex/GPT analysis results (not an error or empty output)",
+        "The agent presents the Codex analysis to the user with some framing or synthesis"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "cho codex xem các phương án này: Option 1: Dùng SQLite với WAL mode. Option 2: Dùng PostgreSQL với connection pooling. Option 3: Dùng Redis cache layer phía trước SQLite. Context: đang build hệ thống tracking cho 10000 concurrent users.",
+      "expected_output": "Agent should identify this as a 'review phương án' request, extract the 3 options, construct a codex exec command with a heredoc prompt containing the options and context, include all required flags.",
+      "files": [],
+      "assertions": [
+        "The command uses 'codex exec' (NOT 'codex exec review') since this is an options review, not a code review",
+        "The command includes all 3 options in the prompt (SQLite WAL, PostgreSQL pooling, Redis cache)",
+        "The prompt includes context about 10000 concurrent users",
+        "The command includes '-m gpt-5.4' to specify the correct model",
+        "The command includes 'model_reasoning_effort=xhigh'",
+        "The command includes 'mcp_servers.mcp_agent_mail.enabled=false'",
+        "The output contains Codex/GPT analysis evaluating the options",
+        "The agent presents the analysis with some framing or synthesis"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/codex review plan — here's the plan:\n1. Add migration for new user_preferences table\n2. Create CRUD API endpoints\n3. Add caching layer with Redis\n4. Write integration tests\n5. Deploy to staging",
+      "expected_output": "Agent should identify this as a plan review, construct a codex exec command with the plan in a heredoc, include all required flags.",
+      "files": [],
+      "assertions": [
+        "The command uses 'codex exec' (NOT 'codex exec review') since this is a plan review",
+        "The prompt includes all 5 plan steps (migration, CRUD, caching, tests, deploy)",
+        "The prompt asks Codex to evaluate completeness, sequencing, risks, or similar criteria",
+        "The command includes '-m gpt-5.4' to specify the correct model",
+        "The command includes 'model_reasoning_effort=xhigh'",
+        "The command includes 'mcp_servers.mcp_agent_mail.enabled=false'",
+        "The output contains Codex/GPT analysis of the plan",
+        "The agent presents the analysis with some framing or synthesis"
+      ]
+    }
+  ]
+}

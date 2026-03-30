@@ -1,0 +1,15 @@
+{
+  "expectations": [
+    {"text": "The command uses 'codex exec' (NOT 'codex exec review') since this is a plan review", "passed": true, "evidence": "Command: codex exec -m gpt-5.4 ... (no 'review' subcommand)"},
+    {"text": "The prompt includes all 5 plan steps (migration, CRUD, caching, tests, deploy)", "passed": true, "evidence": "Prompt lists all 5 steps: migration, CRUD endpoints, Redis caching, integration tests, deploy to staging"},
+    {"text": "The prompt asks Codex to evaluate completeness, sequencing, risks, or similar criteria", "passed": true, "evidence": "Prompt includes: 'Please review for: completeness, correct sequencing, missing steps, risks, and anything that could go wrong in practice.'"},
+    {"text": "The command includes '-m gpt-5.4' to specify the correct model", "passed": true, "evidence": "Command includes -m gpt-5.4"},
+    {"text": "The command includes 'model_reasoning_effort=xhigh'", "passed": true, "evidence": "Output shows 'reasoning effort: xhigh'"},
+    {"text": "The command includes 'mcp_servers.mcp_agent_mail.enabled=false'", "passed": true, "evidence": "Config section confirms MCPs disabled"},
+    {"text": "The output contains Codex/GPT analysis of the plan", "passed": true, "evidence": "Extensive codebase-aware analysis with High/Medium findings, step-by-step review, and 8-step revised plan"},
+    {"text": "The agent presents the analysis with some framing or synthesis", "passed": true, "evidence": "Full structured output with findings, step review, and recommended revised order"}
+  ],
+  "summary": {"passed": 8, "failed": 0, "total": 8, "pass_rate": 1.0},
+  "claims": [],
+  "eval_feedback": {"suggestions": [], "overall": "Excellent execution. Codex even inspected the actual codebase before reviewing the plan, producing codebase-specific feedback."}
+}
