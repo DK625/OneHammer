@@ -1,107 +1,142 @@
-# OneHammer — Claude Code Skills for Vietnamese Developers
+# OneHammer — Claude Code Toolkit cho Vietnamese Developers
 
-Bộ skills cho [Claude Code](https://docs.anthropic.com/en/docs/claude-code) được xây dựng và sử dụng thực chiến bởi OneHammer.
+Bộ **skills, hooks, và setup scripts** cho [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — được xây dựng và dùng thực chiến bởi OneHammer, chia sẻ miễn phí cho cộng đồng developer Việt Nam.
+
+---
+
+## Có gì trong repo này?
+
+| Công cụ | Loại | Mô tả |
+|---------|------|-------|
+| [GitNexus Setup](#gitnexus-setup) | Setup script + Hook | One-command setup GitNexus cho fullstack project |
+| [Codex Review Skill](#codex-review-skill) | Claude Code Skill | Dùng GPT làm reviewer thứ hai ngay trong terminal |
+
+---
+
+## GitNexus Setup
+
+> **`setup-gitnexus.sh`** — One-command setup GitNexus cho fullstack project
+
+### GitNexus là gì?
+
+[GitNexus](https://www.npmjs.com/package/gitnexus) là công cụ xây dựng **knowledge graph** cho codebase — giúp Claude Code hiểu sâu hơn về codebase của bạn thay vì phải đọc từng file một.
+
+Khi đã có GitNexus, Claude Code có thể:
+- Tra cứu symbol, function, class qua MCP (`mcp__gitnexus__context`, `mcp__gitnexus__query`) thay vì dùng Grep/Glob
+- Tự động nhận thông báo khi knowledge graph bị stale sau mỗi commit
+- Làm việc nhanh hơn, chính xác hơn trên codebase lớn
+
+### Script làm gì?
+
+`setup-gitnexus.sh` tự động hóa toàn bộ quá trình setup trong **8 bước**:
+
+| Bước | Mô tả |
+|------|-------|
+| 1 | Cài `gitnexus@latest` global (binary, không dùng npx) |
+| 2 | Chạy `gitnexus setup` (configure editors, skills, hooks toàn cục) |
+| 3 | Chạy `gitnexus analyze` (build knowledge graph → sinh ra `CLAUDE.md`, `AGENTS.md`, skills) |
+| 4 | Chuyển MCP config từ `~/.mcp.json` → `.mcp.json` (project scope, dùng binary để tránh timeout) |
+| 5 | Chuyển hooks từ `~/.claude/settings.json` → `.claude/settings.json` (project scope) |
+| 6 | Cài custom hook JS (block Grep/Glob/Read + redirect sang Serena LSP + cascade context→query→augment) |
+| 7 | Xóa global skills (project đã có skills riêng từ `analyze`) |
+| 8 | Append workspace structure + technical guidelines vào `CLAUDE.md` |
+
+### Tại sao cần script này?
+
+Setup GitNexus thủ công mất ~15–20 phút, dễ sai, và khác nhau tùy môi trường. Script này làm toàn bộ trong ~1 phút, đồng nhất trên mọi machine.
+
+Quan trọng hơn: script **đưa config về project scope** (thay vì global) — tránh conflict khi bạn làm nhiều project cùng lúc.
+
+### Cài đặt
+
+**Yêu cầu:**
+- Node.js + npm
+- `jq` (`apt install jq` hoặc `brew install jq`)
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) đã cài và hoạt động
+
+**Chạy từ project root:**
+
+```bash
+
+# Clone repo rồi copy script vào project
+bash setup-gitnexus.sh
+```
+
+**Sau khi chạy xong:**
+
+```
+  Knowledge graph:   n nodes
+  MCP config:        .mcp.json
+  Hook:              .claude/hooks/gitnexus/gitnexus-hook.cjs
+  Project settings:  .claude/settings.json
+
+  Next step: Restart Claude Code to reload MCP server.
+```
+
+Restart Claude Code là xong — GitNexus đã live.
+
+### Hook hoạt động như thế nào?
+
+Script cài một **PreToolUse hook** chặn Grep/Glob/Read trên code files và redirect Claude Code sang dùng Serena (LSP) hoặc GitNexus MCP thay thế:
+
+```
+Grep/Glob blocked — dùng Serena (LSP) hoặc GitNexus thay thế.
+
+• mcp__serena__find_symbol({name: "MyClass"})
+• mcp__gitnexus__context({name: "MyClass"})
+• mcp__gitnexus__query({query: "MyClass"})
+• Bash(grep / find)  ← escape hatch nếu MCP không đủ
+```
+
+Ngoài ra có **PostToolUse hook** tự động báo khi knowledge graph bị stale sau `git commit/merge/rebase`.
+
+---
 
 ## Codex Review Skill
 
-Skill gọi [OpenAI Codex CLI](https://github.com/openai/codex) (GPT-5.4, xhigh reasoning) làm **reviewer thứ hai** ngay trong terminal — không cần copy/paste context sang tab khác.
+> Dùng codex làm **reviewer thứ hai** ngay trong terminal — không cần copy/paste sang tab khác.
 
-### Tính năng
+Chi tiết đầy đủ: [codex/README.md](codex/README.md)
+
+### Cài nhanh
+
+```bash
+mkdir -p .claude/skills
+cp -r .claude/.skills/codex .claude/skills/
+```
+
+### Các lệnh
 
 | Lệnh | Mô tả |
 |------|-------|
 | `/codex review code` | Review code vừa thay đổi (git diff) |
 | `/codex review plan` | Review execution plan trước khi implement |
 | `/codex review phương án` | So sánh và đánh giá các phương án |
-| `/codex review ý tưởng` | Phân tích ý tưởng kinh doanh / kỹ thuật |
-| `/codex review commit` | Review commit cụ thể |
 | `/codex fix this bug` | Fix bug với reasoning sâu |
 
-### Cài đặt
+### Tại sao cần 2 model?
 
-**Yêu cầu:**
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) đã cài và hoạt động
-- [OpenAI Codex CLI](https://github.com/openai/codex) đã cài và có API key
-
-**Cài skill:**
-
-```bash
-# Clone repo vào thư mục skills của project
-mkdir -p .claude/skills
-cp -r codex .claude/skills/
-```
-
-Sau đó trong Claude Code, gõ `/codex review code` để bắt đầu.
-
-### Cách hoạt động
-
-1. Bạn gõ `/codex review <gì đó>` trong Claude Code
-2. Skill tự động gom context từ cuộc hội thoại (diff, file paths, intent)
-3. Gửi cho GPT-5.4 với reasoning level cao nhất
-4. Kết quả tự trả về — không cần chờ hay check lại
-
-### Tại sao lại cần 2 model?
-
-Mỗi model có thế mạnh khác nhau:
 - **Claude** mạnh ở implement, triển khai, flow làm việc liên tục
-- **GPT-5.4 (xhigh)** mạnh ở phản biện, bóc giả định, soi lỗ hổng logic
+- **GPT (xhigh)** mạnh ở phản biện, bóc giả định, soi lỗ hổng logic
 
-Kết hợp cả hai = góc nhìn rộng hơn, code/plan chất lượng hơn.
+Kết hợp cả hai = pass rate tăng từ **81% → 95%** trong benchmark thực tế (xem [codex/README.md](codex/README.md#eval-benchmark--proof-of-quality)).
 
-## Eval Benchmark — Proof of Quality
+---
 
-Toàn bộ benchmark và eval test được công khai minh bạch. Bạn có thể tự kiểm chứng.
-
-### Kết quả tổng hợp
-
-| Metric | With Skill | Without Skill | Delta |
-|--------|-----------|--------------|-------|
-| **Pass Rate (avg)** | **95%** | 81% | +14% |
-| Pass Rate (range) | 86% – 100% | 43% – 100% | — |
-| Duration (avg) | 374s | 313s | +62s |
-| Tokens (avg) | 79,537 | 49,694 | +29,843 |
-
-### Kết quả chi tiết theo Eval
-
-| Eval | With Skill | Without Skill | Ghi chú |
-|------|-----------|--------------|---------|
-| **Review Code** | **86%** (6/7) | 43% (3/7) | Skill quan trọng nhất — fix wrong subcommand, thiếu flags |
-| Review Phương án | 100% (8/8) | 100% (8/8) | Task đơn giản, cả hai đều pass |
-| Review Plan | 100% (8/8) | 100% (8/8) | Pass như nhau, nhưng with-skill phân tích sâu hơn 8x tokens |
-
-### Xem Benchmark tương tác
-
-Mở file `codex-workspace/iteration-1/benchmark.html` trong browser để xem kết quả dạng dashboard với tabs, comparison charts, và chi tiết từng assertion.
-
-### Cấu trúc thư mục
+## Cấu trúc repo
 
 ```
-.claude/skills/
+OneHammer/
+├── setup-gitnexus.sh          # One-command GitNexus setup
 ├── codex/
-│   └── SKILL.md                    # Skill definition
-└── codex-workspace/
-    ├── evals.json                  # Eval definitions & assertions
-    └── iteration-1/
-        ├── benchmark.html          # Interactive dashboard
-        ├── benchmark.json          # Full raw data
-        ├── benchmark.md            # Summary table
-        ├── review-code/            # Eval: review code
-        ├── review-phuong-an/       # Eval: review options
-        └── review-plan/            # Eval: review plan
-            ├── eval_metadata.json  # Prompt & assertions
-            ├── with_skill/         # Chạy CÓ skill
-            │   ├── grading.json
-            │   ├── timing.json
-            │   └── outputs/
-            │       ├── result.md
-            │       └── metrics.json
-            └── without_skill/      # Chạy KHÔNG CÓ skill
-                ├── grading.json
-                ├── timing.json
-                └── outputs/
-                    ├── result.md
-                    └── metrics.json
+│   └── README.md              # Codex Skill — hướng dẫn đầy đủ
+└── .claude/.skills/
+    ├── codex/
+    │   └── SKILL.md           # Codex skill definition
+    └── codex-workspace/       # Eval benchmark data
 ```
+
+---
 
 ## Đóng góp
 
@@ -109,7 +144,7 @@ Mở file `codex-workspace/iteration-1/benchmark.html` trong browser để xem k
 
 - Cho repo một star
 - Chia sẻ cho ae dev khác
-- Đóng góp skills mới qua Pull Request
+- Đóng góp skills/hooks mới qua Pull Request
 
 ## Giấy phép
 
