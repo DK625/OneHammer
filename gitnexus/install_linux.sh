@@ -9,7 +9,7 @@
 #    curl -fsSL https://raw.githubusercontent.com/your-org/your-repo/main/setup-gitnexus.sh | bash
 #
 #  What this script does:
-#    1. Install gitnexus@latest globally (binary, not npx)
+#    1. Install gitnexus@1.5.3 globally (binary, not npx)
 #    2. Run gitnexus setup (configure editors + skills + hooks globally)
 #    3. Analyze codebase (build knowledge graph → generate CLAUDE.md, AGENTS.md, skills)
 #    4. Move MCP config: ~/.mcp.json → .mcp.json (project scope, binary command)
@@ -52,9 +52,9 @@ command -v npm  >/dev/null 2>&1 || die "npm is required."
 command -v jq   >/dev/null 2>&1 || die "jq is required. Install with: apt install jq  (or brew install jq)"
 
 # ─────────────────────────────────────────────────────────────────────────────
-step "1/8 — Install gitnexus@latest globally"
+step "1/8 — Install gitnexus@1.5.3 globally"
 # ─────────────────────────────────────────────────────────────────────────────
-npm install -g gitnexus@latest --silent 2>/dev/null || npm install -g gitnexus@latest
+npm install -g gitnexus@1.5.3 --silent 2>/dev/null || npm install -g gitnexus@1.5.3
 GITNEXUS_BIN="$(which gitnexus)"
 ok "gitnexus $(gitnexus --version) → $GITNEXUS_BIN"
 
@@ -408,28 +408,30 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 step "8/8 — Append workspace structure + technical guidelines to CLAUDE.md"
 # ─────────────────────────────────────────────────────────────────────────────
-if grep -q "workspace structure" "$CLAUDE_MD" 2>/dev/null; then
-  warn "workspace structure already in CLAUDE.md — skipping"
+if grep -q "<!--gitnexus-->" "$CLAUDE_MD" 2>/dev/null; then
+  warn "gitnexus block already in CLAUDE.md — skipping"
 else
   cat >> "$CLAUDE_MD" << 'WSEOF'
 
+<!--gitnexus-->
 ## workspace structure
 this workspace is indexed as a single project root containing two main components:
-- **onehammerStore**: python backend
-- **onehammerUI**: nextjs frontend
+- **<repo A>**: <brief description about backend>
+- **<repo B>**: <brief description about fronted>
 
 ### fullstack workflow
-1. analyze backend impact in onehammerStore directory first
+1. analyze backend impact in <repo A> directory first
 2. extract the api/contract changes explicitly
-3. analyze frontend impact in onehammerUI based on that contract
+3. analyze frontend impact in <repo B> based on that contract
 4. produce one merged fullstack plan
 
 ### technical guidelines
-- do not search for onehammerStore or onehammerUI as separate repositories
-- all file paths must be relative to the root (e.g., `onehammerStore/main.py` or `onehammerUI/src/app`)
+- do not search for <repo A> or <repo B> as separate repositories
+- all file paths must be relative to the root (e.g., ``<repo A>/main.py`` or ``<repo B>/src/app``)
 - treat the backend as the source of truth for api contracts
+<!--gitnexus:end-->
 WSEOF
-  ok "workspace structure appended to $CLAUDE_MD"
+  ok "gitnexus block appended to $CLAUDE_MD"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

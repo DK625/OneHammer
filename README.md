@@ -8,14 +8,14 @@ Bộ **skills, hooks, và setup scripts** cho [Claude Code](https://docs.anthrop
 
 | Công cụ | Loại | Mô tả |
 |---------|------|-------|
-| [GitNexus Setup](#gitnexus-setup) | Setup script + Hook | One-command setup GitNexus cho fullstack project |
+| [GitNexus Setup](#gitnexus-setup) | Install/Uninstall scripts | One-command setup & teardown GitNexus cho fullstack project |
 | [Codex Review Skill](#codex-review-skill) | Claude Code Skill | Dùng GPT làm reviewer thứ hai ngay trong terminal |
 
 ---
 
 ## GitNexus Setup
 
-> **`setup-gitnexus.sh`** — One-command setup GitNexus cho fullstack project
+> One-command setup & teardown GitNexus cho fullstack project — hỗ trợ cả Linux/macOS và Windows.
 
 ### GitNexus là gì?
 
@@ -51,18 +51,30 @@ Quan trọng hơn: script **đưa config về project scope** (thay vì global) 
 
 **Yêu cầu:**
 - Node.js + npm
-- `jq` (`apt install jq` hoặc `brew install jq`)
+- `jq` (`apt install jq` hoặc `brew install jq`) — chỉ cần trên Linux/macOS
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) đã cài và hoạt động
 
-**Chạy từ project root:**
+**Linux / macOS — chạy từ project root:**
 
 ```bash
+# Cài GitNexus
+bash gitnexus/install_linux.sh
 
-# Clone repo rồi copy script vào project
-bash setup-gitnexus.sh
+# Gỡ GitNexus (khi cần)
+bash gitnexus/uninstall_linux.sh
 ```
 
-**Sau khi chạy xong:**
+**Windows — chạy từ project root (PowerShell):**
+
+```powershell
+# Cài GitNexus
+powershell -ExecutionPolicy Bypass -File gitnexus/install_window.ps1
+
+# Gỡ GitNexus (khi cần)
+powershell -ExecutionPolicy Bypass -File gitnexus/uninstall_window.ps1
+```
+
+**Sau khi cài xong:**
 
 ```
   Knowledge graph:   n nodes
@@ -127,7 +139,11 @@ Kết hợp cả hai = pass rate tăng từ **81% → 95%** trong benchmark th�
 
 ```
 OneHammer/
-├── setup-gitnexus.sh          # One-command GitNexus setup
+├── gitnexus/
+│   ├── install_linux.sh       # Cài GitNexus — Linux/macOS
+│   ├── install_window.ps1     # Cài GitNexus — Windows (PowerShell)
+│   ├── uninstall_linux.sh     # Gỡ GitNexus — Linux/macOS
+│   └── uninstall_window.ps1   # Gỡ GitNexus — Windows (PowerShell)
 ├── codex/
 │   └── README.md              # Codex Skill — hướng dẫn đầy đủ
 └── .claude/.skills/
