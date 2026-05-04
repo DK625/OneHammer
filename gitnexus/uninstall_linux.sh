@@ -151,7 +151,7 @@ else
 
     jq -n \
       --argjson existing "$EXISTING_GLOBAL" \
-      '$existing * {"mcpServers": {"gitnexus": {"command": "npx", "args": ["-y", "gitnexus@1.5.3", "mcp"]}}}' \
+      '$existing * {"mcpServers": {"gitnexus": {"command": "npx", "args": ["-y", "gitnexus@latest", "mcp"]}}}' \
       > "$GLOBAL_MCP"
     ok "gitnexus MCP entry restored to $GLOBAL_MCP"
 

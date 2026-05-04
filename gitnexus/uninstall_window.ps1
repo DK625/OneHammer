@@ -175,7 +175,7 @@ if (-not (Test-Path $PROJECT_MCP)) {
         if (-not $globalMcpObj.ContainsKey('mcpServers')) { $globalMcpObj['mcpServers'] = @{} }
         $globalMcpObj['mcpServers']['gitnexus'] = @{
             command = "npx"
-            args    = @("-y", "gitnexus@1.5.3", "mcp")
+            args    = @("-y", "gitnexus@latest", "mcp")
         }
         $globalMcpObj | ConvertTo-Json -Depth 10 | Set-Content $GLOBAL_MCP -Encoding UTF8
         ok "gitnexus MCP entry restored to $GLOBAL_MCP"

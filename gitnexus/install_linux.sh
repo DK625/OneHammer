@@ -9,7 +9,7 @@
 #    curl -fsSL https://raw.githubusercontent.com/your-org/your-repo/main/setup-gitnexus.sh | bash
 #
 #  What this script does:
-#    1. Install gitnexus@1.5.3 globally (binary, not npx)
+#    1. Install gitnexus@latest globally (binary, not npx)
 #    2. Run gitnexus setup (configure editors + skills + hooks globally)
 #    3. Analyze codebase (build knowledge graph → generate CLAUDE.md, AGENTS.md, skills)
 #    4. Move MCP config: ~/.mcp.json → .mcp.json (project scope, binary command)
@@ -52,9 +52,9 @@ command -v npm  >/dev/null 2>&1 || die "npm is required."
 command -v jq   >/dev/null 2>&1 || die "jq is required. Install with: apt install jq  (or brew install jq)"
 
 # ─────────────────────────────────────────────────────────────────────────────
-step "1/8 — Install gitnexus@1.5.3 globally"
+step "1/8 — Install gitnexus@latest globally"
 # ─────────────────────────────────────────────────────────────────────────────
-npm install -g gitnexus@1.5.3 --silent 2>/dev/null || npm install -g gitnexus@1.5.3
+npm install -g gitnexus@latest --silent 2>/dev/null || npm install -g gitnexus@latest
 GITNEXUS_BIN="$(which gitnexus)"
 ok "gitnexus $(gitnexus --version) → $GITNEXUS_BIN"
 

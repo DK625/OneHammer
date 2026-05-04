@@ -5,7 +5,7 @@
 #    powershell -ExecutionPolicy Bypass -File setup-gitnexus.ps1
 #
 #  What this script does:
-#    1. Install gitnexus@1.5.3 globally (binary, not npx)
+#    1. Install gitnexus@latest globally (binary, not npx)
 #    2. Run gitnexus setup (configure editors + skills + hooks globally)
 #    3. Analyze codebase (build knowledge graph -> generate CLAUDE.md, AGENTS.md, skills)
 #    4. Move MCP config: ~\.mcp.json -> .mcp.json (project scope, binary command)
@@ -56,10 +56,10 @@ if (-not (Get-Command jq -ErrorAction SilentlyContinue)) {
 }
 
 # =============================================================================
-step "1/8 -- Install gitnexus@1.5.3 globally"
+step "1/8 -- Install gitnexus@latest globally"
 # =============================================================================
-npm install -g gitnexus@1.5.3 --silent 2>$null
-if ($LASTEXITCODE -ne 0) { npm install -g gitnexus@1.5.3 }
+npm install -g gitnexus@latest --silent 2>$null
+if ($LASTEXITCODE -ne 0) { npm install -g gitnexus@latest }
 
 $GITNEXUS_BIN = (Get-Command gitnexus -ErrorAction SilentlyContinue).Source
 if (-not $GITNEXUS_BIN) { die "gitnexus binary not found after install." }
