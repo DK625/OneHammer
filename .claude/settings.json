@@ -1,0 +1,67 @@
+{
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob|Bash|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"/root/.claude/hooks/gitnexus/gitnexus-hook.cjs\"",
+            "timeout": 15,
+            "statusMessage": "Enriching with GitNexus graph context..."
+          }
+        ]
+      },
+      {
+        "matcher": "Skill|Agent|AskUserQuestion|Write|Edit|MultiEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/planning_guard.mjs\"",
+            "timeout": 15,
+            "statusMessage": "Planning guard: phase gate"
+          }
+        ]
+      }
+    ],
+    "PostToolBatch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/planning_guard.mjs\"",
+            "timeout": 20,
+            "statusMessage": "Planning guard: validate batch"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"/root/.claude/hooks/gitnexus/gitnexus-hook.cjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking GitNexus index freshness..."
+          }
+        ]
+      },
+      {
+        "matcher": "Skill|Write|Edit|MultiEdit|Bash|Agent|AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/planning_guard.mjs\"",
+            "timeout": 20,
+            "statusMessage": "Planning guard: validate output"
+          }
+        ]
+      }
+    ]
+  }
+}
