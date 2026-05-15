@@ -1,0 +1,299 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "planning-state-v2",
+  "description": "State schema for .planning/state/planning-state-v2.json used by planning_guard.mjs",
+  "type": "object",
+  "required": ["feature", "current_phase", "completed_phases", "phase_plan_approved", "phase_outputs"],
+  "definitions": {
+    "discoveryLane": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["missing", "running", "failed", "blocked_rate_limit", "completed", "succeeded"] },
+        "agent_name": { "type": "string" },
+        "agent_id": { "type": "string" },
+        "attempts": { "type": "number" },
+        "artifact_path": { "type": "string" },
+        "retry_after": { "type": "string" },
+        "error": { "type": "string" },
+        "timestamp": { "type": "string" }
+      }
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Target schema version. 'v2' = Phase 0..8 + 0.5/1.5/1.6/2.5 with test clarification moved to Phase 1.6.",
+      "examples": ["v2", "v2-phase-2.5-approval-gate"]
+    },
+    "schema_notes": { "type": "string" },
+    "feature": { "type": ["string", "null"] },
+    "started_at": { "type": ["string", "null"] },
+    "current_phase": {
+      "type": ["string", "null"],
+      "description": "Phase id. Valid values: 0, 0.5, 1, 1.5, 1.6, 2, 2.5, 3, 4, 5, 7, 8. Legacy values 4.5, 4.6 trigger legacy mode."
+    },
+    "completed_phases": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "phase_plan_approved": { "type": "boolean" },
+    "planning_active": { "type": "boolean" },
+    "blocked": { "type": "boolean" },
+    "block_reason": { "type": ["string", "null"] },
+    "resume_context": {
+      "type": "object",
+      "description": "Explicit resume rehydration gate. Omit or set required=false for continuous in-session planning; set required=true only when a prior planning session was interrupted and must reread source/artifacts before continuing.",
+      "properties": {
+        "required": { "type": "boolean" },
+        "rehydration_required": { "type": "boolean" },
+        "hydrated": { "type": "boolean" },
+        "rehydrated": { "type": "boolean" },
+        "requirement_source_path": { "type": "string" },
+        "reason": { "type": "string" },
+        "hydrated_at": { "type": "string" },
+        "timestamp": { "type": "string" }
+      }
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["full", "lightweight"],
+      "description": "Lightweight mode relaxes 2.5 approval + 3/4 artifact gates."
+    },
+    "phase_outputs": {
+      "type": "object",
+      "description": "Per-phase output records. Keys are phase ids (0, 0.5, 1, ...).",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "timestamp": { "type": "string" }
+        }
+      },
+      "properties": {
+        "0": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string" },
+            "mcp_json_checked": { "type": "boolean" },
+            "mcp_servers_verified": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["serena", "exa", "gitnexus"] }
+            },
+            "serena_onboarding_checked": { "type": "boolean" },
+            "serena_ready": { "type": "boolean" },
+            "gitnexus_reindex_asked": { "type": "boolean" },
+            "gitnexus_reindex_response": { "type": "string", "enum": ["Yes", "No"] },
+            "gitnexus_reindex_ran": { "type": "boolean" },
+            "gitnexus_reindex_ok": { "type": ["boolean", "null"] },
+            "gitnexus_reindex_skip_reason": { "type": ["string", "null"] },
+            "br_help_ok": { "type": "boolean" },
+            "bv_help_ok": { "type": "boolean" },
+            "jq_ok": { "type": "boolean" },
+            "lightweight_mode": { "type": "boolean" },
+            "requirement_source_path": {
+              "type": "string",
+              "description": "Canonical requirement source currently used by planning (e.g., history/<feature>/requirements/<timestamp>-<slug>.md)."
+            },
+            "timestamp": { "type": "string" }
+          }
+        },
+        "0.5": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string" },
+            "feature_path": { "type": "string" },
+            "timestamp": { "type": "string" }
+          }
+        },
+        "1": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string" },
+            "agents": { "type": "array", "items": { "type": "string" } },
+            "lanes": {
+              "type": "object",
+              "description": "Coverage ledger for Phase 1 discovery lanes. Phase 1 starts by launching the four canonical lanes once, then primes only lanes still missing after outputs/artifacts are observable. Phase 1 completes only after all four lane artifacts exist.",
+              "properties": {
+                "architecture": { "$ref": "#/definitions/discoveryLane" },
+                "patterns": { "$ref": "#/definitions/discoveryLane" },
+                "constraints": { "$ref": "#/definitions/discoveryLane" },
+                "external": { "$ref": "#/definitions/discoveryLane" }
+              }
+            },
+            "discovery_path": { "type": "string" },
+            "timestamp": { "type": "string" }
+          }
+        },
+        "1.5": {
+          "type": "object",
+          "description": "Phase 1.5 collects business clarification in exactly 12 questions across 3 AskUserQuestion rounds of 4 questions each.",
+          "properties": {
+            "status": { "type": "string" },
+            "questions_asked": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 16,
+              "multipleOf": 4,
+              "description": "Cumulative count of Phase 1.5 business questions. Normal contract is 12 questions (3 rounds of 4). Optional Round 4 (4 additional questions) is allowed only when unresolved anomaly remains."
+            },
+            "rounds": {
+              "type": "array",
+              "description": "Round-by-round Phase 1.5 memory used by semantic hooks to prevent duplicate intent and track ambiguity resolution.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "round": { "type": "number" },
+                  "questions": { "type": "array", "items": { "type": "string" } },
+                  "intent_tags": { "type": "array", "items": { "type": "string" } },
+                  "answer_summary": { "type": "string" },
+                  "open_ambiguities": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            },
+            "asked_intent_tags": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Normalized intent tags already asked in prior Phase 1.5 rounds."
+            },
+            "anomaly_scan": {
+              "type": "object",
+              "description": "Phase 1.5 anomaly/ambiguity scan summary derived from discovery + prior clarification answers.",
+              "properties": {
+                "status": { "type": "string", "enum": ["none", "detected", "resolved"] },
+                "signals": { "type": "array", "items": { "type": "string" } },
+                "unresolved_count": { "type": "number", "minimum": 0 }
+              }
+            },
+            "optional_round_4_used": {
+              "type": "boolean",
+              "description": "True only when Phase 1.5 consumed the optional anomaly-resolution Round 4."
+            },
+            "requirements_path": { "type": "string" },
+            "requirement_source_path": {
+              "type": "string",
+              "description": "Requirement source selected for this phase when resuming context."
+            },
+            "requirement_source_paths": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Ordered requirement source history used during clarification (oldest→newest)."
+            },
+            "timestamp": { "type": "string" }
+          }
+        },
+        "1.6": {
+          "type": "object",
+          "description": "Phase 1.6 collects test clarification in exactly 8 questions across 2 AskUserQuestion rounds of 4 questions each, including mode-aware evidence planning (fullstack/fe-only/be-only) and FE screenshot checkpoint selection for FE-involving modes, then writes test-scenarios.md.",
+          "properties": {
+            "status": { "type": "string" },
+            "questions_asked": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 8,
+              "multipleOf": 4,
+              "description": "Cumulative count of Phase 1.6 test questions. Increment by 4 after each round. Must reach 8 before completing Phase 1.6."
+            },
+            "test_scenarios_path": {
+              "type": "string",
+              "description": "Path to generated test clarification scenarios document."
+            },
+            "timestamp": { "type": "string" }
+          }
+        },
+        "2": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string" },
+            "approach_path": { "type": "string" },
+            "high_risk_count": { "type": "number" },
+            "docs_triggers": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["api", "ba", "engineering"] }
+            },
+            "timestamp": { "type": "string" }
+          }
+        },
+        "2.5": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string" },
+            "phase_plan_path": { "type": "string" },
+            "approved": { "type": "boolean" },
+            "approval_response": { "type": "string", "enum": ["Approve", "Revise", "pending"] },
+            "timestamp": { "type": "string" }
+          }
+        },
+        "4_approval": {
+          "type": "object",
+          "description": "Phase 4 gate: one approval after the whole story-map set is complete in full mode.",
+          "properties": {
+            "status": { "type": "string" },
+            "story_maps_dir": { "type": "string" },
+            "story_map_paths": { "type": "array", "items": { "type": "string" } },
+            "story_map_path": { "type": "string", "description": "Legacy single story-map path; prefer story_map_paths." },
+            "approved": { "type": "boolean" },
+            "approval_response": { "type": "string", "enum": ["Approve", "Revise", "pending"] },
+            "timestamp": { "type": "string" }
+          }
+        },
+        "3": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string" },
+            "contracts_dir": { "type": "string" },
+            "contract_paths": { "type": "array", "items": { "type": "string" } },
+            "contract_path": { "type": "string", "description": "Legacy single contract path; prefer contract_paths." },
+            "timestamp": { "type": "string" }
+          }
+        },
+        "4": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string" },
+            "story_maps_dir": { "type": "string" },
+            "story_map_paths": { "type": "array", "items": { "type": "string" } },
+            "story_map_path": { "type": "string", "description": "Legacy single story-map path; prefer story_map_paths." },
+            "timestamp": { "type": "string" }
+          }
+        },
+        "5": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string" },
+            "beads_created": { "type": "number" },
+            "story_map_paths": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "All story-map files fully covered by real bead decomposition in Phase 5 (one entry per declared phase)."
+            },
+            "phase_labels": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Phase labels included in the bead set (for example phase-1, phase-2, ...)."
+            },
+            "timestamp": { "type": "string" }
+          }
+        },
+        "7": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string" },
+            "validation_mode": { "type": "string", "enum": ["mechanical_lite", "targeted", "full"] },
+            "cycles_found": { "type": "number" },
+            "semantic_verdict": { "type": "string", "enum": ["READY", "READY_LITE", "READY_TARGETED", "ESCALATE_FULL", "BLOCKED", "NEEDS-REVISION"] },
+            "validator_invocation_id": { "type": ["string", "null"] },
+            "timestamp": { "type": "string" }
+          }
+        },
+        "8": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string" },
+            "plan_path": { "type": "string" },
+            "timestamp": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
