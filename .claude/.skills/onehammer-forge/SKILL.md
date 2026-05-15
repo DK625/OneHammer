@@ -1,6 +1,7 @@
 ---
+name: onehammer-forge
 description: OneHammer implementation mode: claim the next ready bead, implement with scoped context, collect runtime evidence, and hand off safely. Use only when the user types /onehammer:forge or explicitly asks to claim/implement the next ready br bead
-argument-hint: "[optional bead-id or focus note]"
+hidden: true
 ---
 
 We are now in IMPLEMENTATION mode.
