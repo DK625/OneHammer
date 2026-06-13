@@ -13,6 +13,7 @@ Bộ **skills, hooks, và setup scripts** cho [Claude Code](https://docs.anthrop
 | [Planning Skill](#planning-skill) | Claude Code Skill | Pipeline lập kế hoạch feature 8-phase có kiểm soát |
 | [OneHammer Forge Skill](#onehammer-forge-skill) | Claude Code Skill | Implementation mode — claim bead, implement, hand off |
 | [Planning Guard Hook](#planning-guard-hook) | Claude Code Hook | Enforce phase gates và artifact invariants cho planning pipeline |
+| [GPT Web Review Skill](#gpt-web-review-skill) | Claude Code Skill | Gửi context sang ChatGPT web qua Oracle CLI, nhận raw response — không qua Claude |
 
 ---
 
@@ -239,6 +240,45 @@ cp -r .claude/hooks/planning .claude/hooks/
 
 ---
 
+## GPT Web Review Skill
+
+> Gửi context thẳng sang **ChatGPT web qua Oracle CLI** — nhận raw GPT response, không qua Claude xử lý.
+
+### Skill làm gì?
+
+`gpt-web-review` là bridge giữa Claude Code session và ChatGPT web:
+
+1. Thu thập context an toàn (git diff, file liên quan, code snippet)
+2. Gửi sang ChatGPT web qua `oracle` CLI — hỗ trợ `--file` cho context lớn
+3. Lưu raw response vào `/opt/gpt-response`
+4. Trả về nguyên văn câu trả lời của GPT — không summarize, không rewrite
+
+### Yêu cầu
+
+- [Oracle CLI](https://github.com/...) đã cài và configure (xem [setup.md](.claude/.skills/gpt-web-review/setup.md))
+- ChatGPT account đã login qua Oracle
+
+### Cài nhanh
+
+```bash
+mkdir -p .claude/skills
+cp -r .claude/.skills/gpt-web-review .claude/skills/
+```
+
+### Kích hoạt
+
+| Lệnh | Mô tả |
+|------|-------|
+| `/gpt-web-review <câu hỏi>` | Gửi câu hỏi + context sang GPT, nhận raw response |
+
+### Tại sao cần skill này?
+
+- Lấy **second opinion từ GPT** mà không cần rời terminal
+- GPT xử lý trực tiếp — không qua Claude trung gian, không bị reformat
+- Hỗ trợ context lớn bằng file attachment (`--file`) thay vì paste vào prompt
+
+---
+
 ## Cấu trúc repo (đầy đủ)
 
 ```
@@ -253,7 +293,8 @@ community/
 │   │   ├── codex/SKILL.md              # Codex review skill
 │   │   ├── planning/SKILL.md           # Planning pipeline skill
 │   │   ├── planning-validator/SKILL.md # Deep validation skill
-│   │   └── onehammer-forge/SKILL.md   # Implementation mode skill
+│   │   ├── onehammer-forge/SKILL.md   # Implementation mode skill
+│   │   └── gpt-web-review/SKILL.md    # GPT web review via Oracle CLI
 │   └── hooks/
 │       ├── planning_guard.mjs          # Hook entry point
 │       └── planning/                   # Hook lib + validators
