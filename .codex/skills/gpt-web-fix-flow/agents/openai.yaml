@@ -1,0 +1,4 @@
+interface:
+  display_name: "GPT Web Fix Flow"
+  short_description: "Package project context for GPT Web"
+  default_prompt: "Use $gpt-web-fix-flow to resolve the configured Oracle runtime case, package bounded project context, send it to GPT Web with task-specific prompt requirements and the required updated zip output, then stop for the returned zip; run local apply asset only when the request says local apply asset or bước 3."

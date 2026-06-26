@@ -1,320 +1,243 @@
-# OneHammer — Claude Code Toolkit cho Vietnamese Developers
+# OneHammer - Claude Code & Codex Toolkit cho developer Việt Nam
 
-Bộ **skills, hooks, và setup scripts** cho [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — được xây dựng và dùng thực chiến bởi OneHammer, chia sẻ miễn phí cho cộng đồng developer Việt Nam.
+Bộ **skills, hooks, và setup scripts** do OneHammer dùng thực chiến cho Claude Code và Codex. Repo tập trung vào 4 nhóm việc chính:
+
+- Tăng khả năng hiểu codebase bằng GitNexus.
+- Chuẩn hóa planning và execution bằng Claude Code skills/hooks.
+- Lấy second opinion từ Codex hoặc GPT Web.
+- Đóng gói context an toàn khi cần gửi sang ChatGPT web.
 
 ---
 
-## Có gì trong repo này?
+## Thành phần
 
-| Công cụ | Loại | Mô tả |
-|---------|------|-------|
-| [GitNexus Setup](#gitnexus-setup) | Install/Uninstall scripts | One-command setup & teardown GitNexus cho fullstack project |
-| [Codex Review Skill](#codex-review-skill) | Claude Code Skill | Dùng GPT làm reviewer thứ hai ngay trong terminal |
-| [Planning Skill](#planning-skill) | Claude Code Skill | Pipeline lập kế hoạch feature 8-phase có kiểm soát |
-| [OneHammer Forge Skill](#onehammer-forge-skill) | Claude Code Skill | Implementation mode — claim bead, implement, hand off |
-| [Planning Guard Hook](#planning-guard-hook) | Claude Code Hook | Enforce phase gates và artifact invariants cho planning pipeline |
-| [GPT Web Review Skill](#gpt-web-review-skill) | Claude Code Skill | Gửi context sang ChatGPT web qua Oracle CLI, nhận raw response — không qua Claude |
+| Thành phần | Loại | Mục đích |
+|---|---|---|
+| [GitNexus Setup](#gitnexus-setup) | Script cài/gỡ | Cài GitNexus, MCP config, hooks và project guidelines |
+| [Codex Review Skill](#codex-review-skill) | Claude Code skill | Gọi Codex làm reviewer thứ hai ngay trong terminal |
+| [Planning Skill](#planning-skill) | Claude Code skill | Pipeline lập kế hoạch feature theo phase, có artifact và gate |
+| [Planning Validator](#planning-validator) | Claude Code skill | Deep validation cho plan rủi ro cao |
+| [OneHammer Forge](#onehammer-forge) | Claude Code skill | Claim bead, implement, kiểm chứng runtime, handoff |
+| [Planning Guard Hook](#planning-guard-hook) | Claude Code hook | Enforce planning phase gates và artifact invariants |
+| [GPT Web Review](#gpt-web-review) | Claude Code skill | Gửi context sang ChatGPT web qua Oracle CLI, nhận raw response |
+| [GPT Web Fix Flow](#gpt-web-fix-flow) | Codex skill | Đóng gói context, gửi GPT Web, chờ zip trả về, apply có gate |
 
 ---
 
 ## GitNexus Setup
 
-> One-command setup & teardown GitNexus cho fullstack project — hỗ trợ cả Linux/macOS và Windows.
+[GitNexus](https://www.npmjs.com/package/gitnexus) tạo knowledge graph cho codebase để Claude Code tra cứu symbol, function, class và dependency tốt hơn so với chỉ đọc file thủ công.
 
-### GitNexus là gì?
+Script trong `gitnexus/` tự động:
 
-[GitNexus](https://www.npmjs.com/package/gitnexus) là công cụ xây dựng **knowledge graph** cho codebase — giúp Claude Code hiểu sâu hơn về codebase của bạn thay vì phải đọc từng file một.
+- Cài `gitnexus@latest` global.
+- Chạy `gitnexus setup` và `gitnexus analyze`.
+- Đưa MCP config về project scope trong `.mcp.json`.
+- Đưa Claude hooks về project scope trong `.claude/settings.json`.
+- Cài hook redirect Grep/Glob/Read sang Serena/GitNexus khi phù hợp.
+- Append workspace structure và technical guidelines vào `CLAUDE.md`.
 
-Khi đã có GitNexus, Claude Code có thể:
-- Tra cứu symbol, function, class qua MCP (`mcp__gitnexus__context`, `mcp__gitnexus__query`) thay vì dùng Grep/Glob
-- Tự động nhận thông báo khi knowledge graph bị stale sau mỗi commit
-- Làm việc nhanh hơn, chính xác hơn trên codebase lớn
+Yêu cầu:
 
-### Script làm gì?
+- Node.js + npm.
+- `jq` trên Linux/macOS.
+- Claude Code đã cài và hoạt động.
 
-`setup-gitnexus.sh` tự động hóa toàn bộ quá trình setup trong **8 bước**:
-
-| Bước | Mô tả |
-|------|-------|
-| 1 | Cài `gitnexus@latest` global (binary, không dùng npx) |
-| 2 | Chạy `gitnexus setup` (configure editors, skills, hooks toàn cục) |
-| 3 | Chạy `gitnexus analyze` (build knowledge graph → sinh ra `CLAUDE.md`, `AGENTS.md`, skills) |
-| 4 | Chuyển MCP config từ `~/.mcp.json` → `.mcp.json` (project scope, dùng binary để tránh timeout) |
-| 5 | Chuyển hooks từ `~/.claude/settings.json` → `.claude/settings.json` (project scope) |
-| 6 | Cài custom hook JS (block Grep/Glob/Read + redirect sang Serena LSP + cascade context→query→augment) |
-| 7 | Xóa global skills (project đã có skills riêng từ `analyze`) |
-| 8 | Append workspace structure + technical guidelines vào `CLAUDE.md` |
-
-### Tại sao cần script này?
-
-Setup GitNexus thủ công mất ~15–20 phút, dễ sai, và khác nhau tùy môi trường. Script này làm toàn bộ trong ~1 phút, đồng nhất trên mọi machine.
-
-Quan trọng hơn: script **đưa config về project scope** (thay vì global) — tránh conflict khi bạn làm nhiều project cùng lúc.
-
-### Cài đặt
-
-**Yêu cầu:**
-- Node.js + npm
-- `jq` (`apt install jq` hoặc `brew install jq`) — chỉ cần trên Linux/macOS
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) đã cài và hoạt động
-
-**Linux / macOS — chạy từ project root:**
+Cài/gỡ trên Linux hoặc macOS:
 
 ```bash
-# Cài GitNexus
 bash gitnexus/install_linux.sh
-
-# Gỡ GitNexus (khi cần)
 bash gitnexus/uninstall_linux.sh
 ```
 
-**Windows — chạy từ project root (PowerShell):**
+Cài/gỡ trên Windows PowerShell:
 
 ```powershell
-# Cài GitNexus
 powershell -ExecutionPolicy Bypass -File gitnexus/install_window.ps1
-
-# Gỡ GitNexus (khi cần)
 powershell -ExecutionPolicy Bypass -File gitnexus/uninstall_window.ps1
 ```
 
-**Sau khi cài xong:**
-
-```
-  Knowledge graph:   n nodes
-  MCP config:        .mcp.json
-  Hook:              .claude/hooks/gitnexus/gitnexus-hook.cjs
-  Project settings:  .claude/settings.json
-
-  Next step: Restart Claude Code to reload MCP server.
-```
-
-Restart Claude Code là xong — GitNexus đã live.
-
-### Hook hoạt động như thế nào?
-
-Script cài một **PreToolUse hook** chặn Grep/Glob/Read trên code files và redirect Claude Code sang dùng Serena (LSP) hoặc GitNexus MCP thay thế:
-
-```
-Grep/Glob blocked — dùng Serena (LSP) hoặc GitNexus thay thế.
-
-• mcp__serena__find_symbol({name: "MyClass"})
-• mcp__gitnexus__context({name: "MyClass"})
-• mcp__gitnexus__query({query: "MyClass"})
-• Bash(grep / find)  ← escape hatch nếu MCP không đủ
-```
-
-Ngoài ra có **PostToolUse hook** tự động báo khi knowledge graph bị stale sau `git commit/merge/rebase`.
+Sau khi cài, restart Claude Code để reload MCP server.
 
 ---
 
-## Codex Review Skill
+## Claude Code Skills
 
-> Dùng codex làm **reviewer thứ hai** ngay trong terminal — không cần copy/paste sang tab khác.
-
-Chi tiết đầy đủ: [codex/README.md](codex/README.md)
-
-### Cài nhanh
+Các skill nằm trong `.claude/.skills/`. Để cài sang project khác:
 
 ```bash
 mkdir -p .claude/skills
-cp -r .claude/.skills/codex .claude/skills/
+cp -r /path/to/OneHammer/.claude/.skills/<skill-name> .claude/skills/
 ```
 
-### Các lệnh
+### Codex Review Skill
 
-| Lệnh | Mô tả |
-|------|-------|
-| `/codex review code` | Review code vừa thay đổi (git diff) |
+Path: `.claude/.skills/codex`
+
+Dùng Codex với reasoning cao để review code, plan, ý tưởng hoặc phương án. Skill hỗ trợ các intent như:
+
+| Lệnh / intent | Mục đích |
+|---|---|
+| `/codex review code` | Review git diff hoặc code vừa thay đổi |
 | `/codex review plan` | Review execution plan trước khi implement |
-| `/codex review phương án` | So sánh và đánh giá các phương án |
-| `/codex fix this bug` | Fix bug với reasoning sâu |
+| `/codex review phương án` | So sánh trade-off giữa các phương án |
+| `/codex review commit` | Review commit cụ thể |
+| `/codex fix this bug` | Nhờ Codex phân tích và đề xuất fix |
 
-### Tại sao cần 2 model?
+Chi tiết: `.claude/.skills/codex/README.md` và `.claude/.skills/codex/SKILL.md`.
 
-- **Claude** mạnh ở implement, triển khai, flow làm việc liên tục
-- **GPT (xhigh)** mạnh ở phản biện, bóc giả định, soi lỗ hổng logic
+### Planning Skill
 
-Kết hợp cả hai = pass rate tăng từ **81% → 95%** trong benchmark thực tế (xem [codex/README.md](codex/README.md#eval-benchmark--proof-of-quality)).
+Path: `.claude/.skills/planning`
 
----
+Pipeline planning bắt buộc cho feature có scope đáng kể. Luồng chuẩn:
 
-## Planning Skill
+| Phase | Kết quả chính |
+|---|---|
+| 0 | Pre-flight, kiểm tra dependencies và state |
+| 0.5 | Tạo workspace `history/<feature>/` |
+| 1 | Discovery 4 lane: Architecture, Patterns, Constraints, External |
+| 1.5 | Làm rõ business scope |
+| 1.6 | Làm rõ test scope và evidence |
+| 2 | Tổng hợp approach |
+| 2.5 | Approval cho whole-feature phase plan |
+| 3 | Contract chi tiết cho từng phase |
+| 4 | Story map và approval cho decomposition |
+| 5 | Tạo beads thật bằng `br create` |
+| 7 | Validate graph và semantic readiness |
+| 8 | Xuất execution plan rồi dừng |
 
-> Pipeline lập kế hoạch feature **8 phase có kiểm soát** — từ discovery đến execution plan, không bỏ qua bước nào.
+Artifacts chính nằm dưới `history/<feature>/`: `discovery.md`, `requirements.md`, `test-scenarios.md`, `approach.md`, `phase-plan.md`, `contracts/`, `story-maps/`, `execution-plan.md`.
 
-### Planning Skill là gì?
+### Planning Validator
 
-Thay vì để Claude Code đoán mò cách tiếp cận, Planning Skill ép buộc quy trình đầy đủ:
+Path: `.claude/.skills/planning-validator`
 
-| Phase | Mô tả |
-|-------|-------|
-| 0 | Kickoff — xác nhận scope, đọc CLAUDE.md |
-| 1–3 | Discovery — backend, frontend, integration |
-| 4 | Approach — đề xuất và phê duyệt phương án |
-| 5 | Contract — API/DB/component contracts chi tiết |
-| 6 | Story map — beads/tasks breakdown |
-| 7 | Validation — graph check, semantic-lite, hoặc deep validator |
-| 8 | Execution plan — handoff cho forge |
+Dùng làm deep validation gate khi plan có rủi ro cao như payment, security, data migration, dependency mới hoặc cross-module contract. Skill cung cấp checklist, reviewer prompts và spike template trong `references/`.
 
-Mỗi phase có **artifact cụ thể** (discovery.md, approach.md, contract, story-map). Hook `planning_guard` enforce không cho bỏ qua phase.
+### OneHammer Forge
 
-### Planning Validator Skill
+Path: `.claude/.skills/onehammer-forge`
 
-`planning-validator` là **deep validation gate** cho phase 7 — dùng khi cần full/deep validation hoặc có rủi ro cao (payment, security, data migration).
+Implementation mode sau khi planning đã tạo beads. Luồng bắt buộc:
 
-### Cài nhanh
+1. Chạy `br ready --json` và chỉ chọn bead trong danh sách ready.
+2. Lock ownership bằng `br update <id> --status=in_progress`.
+3. Claim qua Agent Mail và reserve file surface nhỏ nhất.
+4. Load bead-scoped context, không scan cả repo.
+5. Dùng Serena/GitNexus để phân tích impact trước khi edit.
+6. Implement BE/API/DB trước, rồi FE/UI nếu có.
+7. Thu runtime evidence: test, curl/API, DB query, migration, browser screenshot khi cần.
+8. Close bead chỉ khi evidence đã được ghi rõ trong close reason.
 
-```bash
-mkdir -p .claude/skills
-cp -r .claude/.skills/planning .claude/skills/
-cp -r .claude/.skills/planning-validator .claude/skills/
-```
-
-### Các lệnh
-
-| Lệnh | Mô tả |
-|------|-------|
-| `/planning <feature>` | Bắt đầu pipeline planning cho feature |
-| `/validate plan full` | Deep validation (invoke planning-validator) |
-| `/validate plan deep` | Như trên |
-
----
-
-## OneHammer Forge Skill
-
-> **Implementation mode** — claim bead sẵn sàng, implement có scope rõ ràng, thu thập runtime evidence, hand off an toàn.
-
-### Forge là gì?
-
-Forge là skill thực thi — dùng sau khi planning xong và beads đã được tạo. Nó ép buộc workflow đúng thứ tự:
-
-1. `br ready --json` → chọn bead (không fallback nếu list rỗng)
-2. Lock ownership: `br update <id> --status=in_progress`
-3. Agent Mail claim flow — reserve files
-4. Load context bead-scoped — không scan toàn repo
-5. GitNexus impact analysis trước khi edit bất kỳ symbol nào
-6. Thu thập runtime evidence (curl/migration/screenshot) theo loại bead
-7. Close bead với evidence cụ thể — không close với "Completed" chung chung
-
-### Cài nhanh
-
-```bash
-mkdir -p .claude/skills
-cp -r .claude/.skills/onehammer-forge .claude/skills/
-```
-
-### Kích hoạt
-
-| Lệnh | Mô tả |
-|------|-------|
-| `/onehammer:forge` | Claim và implement bead sẵn sàng tiếp theo |
-| `/onehammer:forge <bead-id>` | Implement bead cụ thể (phải có trong `br ready`) |
+Kích hoạt bằng `/onehammer:forge` hoặc `/onehammer:forge <bead-id>`.
 
 ---
 
 ## Planning Guard Hook
 
-> **PreToolUse + PostToolUse hook** enforce phase gates và artifact invariants cho planning pipeline — ngăn Claude Code bỏ qua bước quan trọng.
+Hook entrypoint: `.claude/hooks/planning_guard.mjs`
 
-### Hook làm gì?
+Hook chạy trong Claude Code để enforce planning pipeline:
 
-`planning_guard.mjs` chạy tự động mỗi khi Claude Code dùng tool trong session planning:
+- `PreToolUse`: chặn thao tác sai phase hoặc ghi artifact quá sớm.
+- `PostToolUse`: kiểm tra artifact/schema/state sau từng bước.
+- Session/user/stop validators nằm trong `.claude/hooks/planning/validators/`.
+- State schema và helper lib nằm trong `.claude/hooks/planning/`.
 
-- **PreToolUse**: Chặn tool call nếu vi phạm phase ordering (ví dụ: cố write contract khi chưa có approach)
-- **PostToolUse**: Kiểm tra artifact sau mỗi bước — đảm bảo output đúng schema
-
-Không có external dependency — chỉ dùng Node built-ins, chạy offline.
-
-### Cài nhanh
+Cài sang project khác:
 
 ```bash
-# Copy hook vào project
 mkdir -p .claude/hooks
-cp .claude/hooks/planning_guard.mjs .claude/hooks/
-cp -r .claude/hooks/planning .claude/hooks/
-
-# Đăng ký trong .claude/settings.json
-# (xem README trong .claude/hooks/planning/ để biết cấu hình đầy đủ)
+cp /path/to/OneHammer/.claude/hooks/planning_guard.mjs .claude/hooks/
+cp -r /path/to/OneHammer/.claude/hooks/planning .claude/hooks/
 ```
+
+Sau đó đăng ký hook trong `.claude/settings.json`. Xem thêm `.claude/hooks/planning/README.md`.
 
 ---
 
-## GPT Web Review Skill
+## GPT Web Review
 
-> Gửi context thẳng sang **ChatGPT web qua Oracle CLI** — nhận raw GPT response, không qua Claude xử lý.
+Path: `.claude/.skills/gpt-web-review`
 
-### Skill làm gì?
+Skill gửi context từ Claude Code sang ChatGPT web qua Oracle CLI và trả lại raw response, không rewrite qua Claude.
 
-`gpt-web-review` là bridge giữa Claude Code session và ChatGPT web:
+Luồng chính:
 
-1. Thu thập context an toàn (git diff, file liên quan, code snippet)
-2. Gửi sang ChatGPT web qua `oracle` CLI — hỗ trợ `--file` cho context lớn
-3. Lưu raw response vào `/opt/gpt-response`
-4. Trả về nguyên văn câu trả lời của GPT — không summarize, không rewrite
+1. Thu context an toàn: git diff, file liên quan, snippet cần thiết.
+2. Gửi qua `oracle` CLI, hỗ trợ attachment bằng `--file`.
+3. Lưu raw response vào `/opt/gpt-response`.
+4. Trả nguyên văn phản hồi của GPT cho user.
 
-### Yêu cầu
+Yêu cầu:
 
-- [Oracle CLI](https://github.com/...) đã cài và configure (xem [setup.md](.claude/.skills/gpt-web-review/setup.md))
-- ChatGPT account đã login qua Oracle
+- Oracle CLI đã cài và login ChatGPT.
+- Bridge/runtime setup theo `.claude/.skills/gpt-web-review/setup.md`.
+- SSH target nên dùng alias `openclaw`, không hardcode IP hoặc `root@<ip>`.
 
-### Cài nhanh
+Kích hoạt bằng `/gpt-web-review <câu hỏi>`.
+
+---
+
+## GPT Web Fix Flow
+
+Path: `.codex/skills/gpt-web-fix-flow`
+
+Đây là Codex skill cho quy trình outbound GPT Web có kiểm soát:
+
+1. Đọc instruction repo và context tối thiểu.
+2. Resolve Oracle runtime case từ `oracle_runtime.local.json`.
+3. Đóng gói context bằng script trong `scripts/`.
+4. Chạy Oracle dry run.
+5. Gửi request sang GPT Web bằng browser mode.
+6. Dừng lại để user tải zip kết quả từ ChatGPT web.
+7. Chỉ apply zip khi user nói rõ `local apply asset` hoặc `bước 3`.
+
+Packager có sẵn:
 
 ```bash
-mkdir -p .claude/skills
-cp -r .claude/.skills/gpt-web-review .claude/skills/
+.codex/skills/gpt-web-fix-flow/scripts/package-gpt-web-context.sh --repo-root "$PWD" --path src
 ```
 
-### Kích hoạt
+```powershell
+& ".codex\skills\gpt-web-fix-flow\scripts\package-gpt-web-context.ps1" -RepoRoot (Get-Location).Path -Path @("src")
+```
 
-| Lệnh | Mô tả |
-|------|-------|
-| `/gpt-web-review <câu hỏi>` | Gửi câu hỏi + context sang GPT, nhận raw response |
-
-### Tại sao cần skill này?
-
-- Lấy **second opinion từ GPT** mà không cần rời terminal
-- GPT xử lý trực tiếp — không qua Claude trung gian, không bị reformat
-- Hỗ trợ context lớn bằng file attachment (`--file`) thay vì paste vào prompt
+Runtime cases và alias `openclaw` được mô tả trong `.codex/skills/gpt-web-fix-flow/references/oracle_runtime_cases.md`.
 
 ---
 
-## Cấu trúc repo (đầy đủ)
+## Cấu trúc repo
 
-```
-community/
+```text
+OneHammer/
+├── README.md
 ├── gitnexus/
 │   ├── install_linux.sh
 │   ├── install_window.ps1
 │   ├── uninstall_linux.sh
 │   └── uninstall_window.ps1
 ├── .claude/
+│   ├── settings.json
 │   ├── .skills/
-│   │   ├── codex/SKILL.md              # Codex review skill
-│   │   ├── planning/SKILL.md           # Planning pipeline skill
-│   │   ├── planning-validator/SKILL.md # Deep validation skill
-│   │   ├── onehammer-forge/SKILL.md   # Implementation mode skill
-│   │   └── gpt-web-review/SKILL.md    # GPT web review via Oracle CLI
+│   │   ├── codex/
+│   │   ├── gpt-web-review/
+│   │   ├── onehammer-forge/
+│   │   ├── planning/
+│   │   └── planning-validator/
 │   └── hooks/
-│       ├── planning_guard.mjs          # Hook entry point
-│       └── planning/                   # Hook lib + validators
-└── README.md
+│       ├── planning_guard.mjs
+│       └── planning/
+└── .codex/
+    └── skills/
+        └── gpt-web-fix-flow/
 ```
 
 ---
 
-## Đóng góp
+## Đóng góp và giấy phép
 
-Đây là đóng góp của OneHammer cho cộng đồng developer sử dụng Claude Code. Nếu bạn thấy hữu ích:
+Đây là bộ công cụ OneHammer chia sẻ cho cộng đồng developer dùng Claude Code/Codex. Bạn có thể dùng, chỉnh sửa và phân phối theo MIT License.
 
-- Cho repo một star
-- Chia sẻ cho ae dev khác
-- Đóng góp skills/hooks mới qua Pull Request
-
-## Giấy phép
-
-MIT License — tự do sử dụng, chỉnh sửa, và phân phối.
-
----
-
-**OneHammer** — AI-powered development tools cho developer Việt Nam.
+Nếu đóng góp thêm skill/hook/script, hãy giữ nguyên nguyên tắc: instruction rõ, workflow có gate, không hardcode secret/IP, và có cách kiểm chứng kết quả.

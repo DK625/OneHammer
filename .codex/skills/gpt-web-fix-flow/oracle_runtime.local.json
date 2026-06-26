@@ -1,0 +1,22 @@
+{
+  "activeCase": "case2_cloud_linux_to_local_linux",
+  "active_path": [
+    "/opt/one_hammer/sdlc"
+  ],
+  "extra": {
+    "/opt/one_hammer/.codex": {
+      "exclude": [
+        "/opt/one_hammer/.codex/claude-workers"
+      ]
+    },
+    "/opt/one_hammer/sdlc": {
+      "exclude": [
+        "/opt/one_hammer/sdlc/history",
+        "/opt/one_hammer/sdlc/scripts",
+        "*.png",
+        "*.svg"
+      ],
+      "prompt": "After updating the SDLC repo, add one Markdown file at the zip root:\n\nSDLC_CHANGE_REPORT.md\n\nThis file must be visible immediately after extracting the zip and must be written in Vietnamese. Maximum length: 500 lines.\n\nThe report must answer every requirement in this prompt one by one, with no skipped items. For each item, include these short sections:\n\nRequirement: quote/summarize the requirement.\nWhat was found: issue found in repo/transcript.\nWhat was changed: concrete files/folders/scripts/hooks/docs changed.\nWhy this solves it: brief explanation.\nDemo impact: what can be shown in the next demo.\n\nKeep it concise, easy to review, and focused on concrete changes, not theory.\n\nAt the end, add:\n\nSummary of important changed files\n\nList key added/changed files with one-line explanations.\n\nThe returned zip is incomplete if SDLC_CHANGE_REPORT.md is missing, longer than 500 lines, or does not explicitly answer every requirement."
+    }
+  }
+}
