@@ -1,6 +1,9 @@
 {
-  "activeCase": "case2_cloud_linux_to_local_linux",
+  "activeCase": "case3_cloud_linux_to_local_windows",
   "active_path": [
+    "/opt/one_hammer/summarize",
+    "/opt/one_hammer/oracle",
+    "/opt/one_hammer/hermes-agent/my_build",
     "/opt/one_hammer/sdlc"
   ],
   "extra": {
@@ -17,6 +20,42 @@
         "*.svg"
       ],
       "prompt": "After updating the SDLC repo, add one Markdown file at the zip root:\n\nSDLC_CHANGE_REPORT.md\n\nThis file must be visible immediately after extracting the zip and must be written in Vietnamese. Maximum length: 500 lines.\n\nThe report must answer every requirement in this prompt one by one, with no skipped items. For each item, include these short sections:\n\nRequirement: quote/summarize the requirement.\nWhat was found: issue found in repo/transcript.\nWhat was changed: concrete files/folders/scripts/hooks/docs changed.\nWhy this solves it: brief explanation.\nDemo impact: what can be shown in the next demo.\n\nKeep it concise, easy to review, and focused on concrete changes, not theory.\n\nAt the end, add:\n\nSummary of important changed files\n\nList key added/changed files with one-line explanations.\n\nThe returned zip is incomplete if SDLC_CHANGE_REPORT.md is missing, longer than 500 lines, or does not explicitly answer every requirement."
+    },
+    "/opt/one_hammer/summarize": {
+      "exclude": [
+        "/opt/one_hammer/summarize/.github",
+        "/opt/one_hammer/summarize/summarize_sample.gif",
+        "/opt/one_hammer/summarize/fern/assets/images",
+        "/opt/one_hammer/summarize/my_build/archive",
+        "/opt/one_hammer/summarize/fern/videos",
+        "/opt/one_hammer/summarize/tests",
+        "*.png",
+        "*.svg"
+      ],
+      "prompt": "Update the code, and relevant Markdown/docs in the returned zip. Reuse existing project patterns, keep changes clean and scoped, and make the implementation easy to maintain and scale."
+    },
+    "/opt/one_hammer/oracle": {
+      "exclude": [
+        "/opt/one_hammer/oracle/.github",
+        "*.png"
+      ]
+    },
+    "/opt/one_hammer/hermes-agent/my_build": {
+      "exclude": [
+        "/opt/one_hammer/hermes-agent/my_build/archive",
+        "*.png",
+        "*.svg",
+        "*.zst",
+        "*.mp3",
+        "*.wav",
+        "*.icns",
+        "*.jpg",
+        "*.jpeg",
+        "*.ico",
+        "*.pdf",
+        "*.woff2",
+        "*.mp4"
+      ]
     }
   }
 }

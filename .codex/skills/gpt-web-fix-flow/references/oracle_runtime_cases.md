@@ -93,7 +93,7 @@ Problem: <short concrete bug/feature description>.
 
 Requirements:
 - <task-specific requirements from the user, repo notes, screenshots, logs, or handoff>
-- Return an updated .zip file containing the fixed/updated files and instructions, with a clearly visible download link.
+- Return an updated .zip file containing the fixed/updated files and instructions as a downloadable GPT Web response artifact that Oracle can collect automatically.
 
 Additional requirements:
 - <append selected extra[<path>].prompt values and any user-requested special constraints here; omit this section if empty>
@@ -312,7 +312,7 @@ oracle --engine browser \
   2>&1 | tee "$out_file"
 ```
 
-Download handoff rule: the browser and download UI are on local Ubuntu. If the next step runs on cloud Linux, the user must copy/upload the downloaded GPT Web zip to a cloud-readable path and then request `local apply asset` or `bước 3` with that cloud path.
+Returned artifact rule: the browser and download UI are on local Ubuntu, while the repo may be on cloud Linux. Oracle must automatically download/transfer the returned GPT Web zip to a cloud-readable artifact path. If the zip is materialized and validates, apply it automatically. If download/transfer/validation fails or no unambiguous returned zip is available, report the failure and raw output/session path; do not ask the user to download the zip manually.
 
 ## Case 3: `case3_cloud_linux_to_local_windows`
 
@@ -351,7 +351,7 @@ curl -s -H "Authorization: Bearer f667af3845a136e7a1d6573a1d0ecff2" http://127.0
 
 Use the case 2 Linux/cloud package, staging, dry-run, and foreground send commands.
 
-Download handoff rule: the browser and download UI are on local Windows. If the next step runs on cloud Linux, the user must copy/upload the downloaded GPT Web zip to a cloud-readable path and then request `local apply asset` or `bước 3` with that cloud path.
+Returned artifact rule: the browser and download UI are on local Windows, while the repo may be on cloud Linux. Oracle must automatically download/transfer the returned GPT Web zip to a cloud-readable artifact path. If the zip is materialized and validates, apply it automatically. If download/transfer/validation fails or no unambiguous returned zip is available, report the failure and raw output/session path; do not ask the user to download the zip manually.
 
 ## Bridge Troubleshooting
 
