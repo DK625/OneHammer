@@ -50,9 +50,9 @@ export async function validateStop(input, projectDir) {
 
   if (["5", "7"].includes(String(state.current_phase ?? "")) && phase4Approved && PREMATURE_PAUSE_RE.test(msg)) {
     return topLevelBlock(
-      `After Phase 4 Approve, planning must continue in one run through Phase 5, Phase 7, and Phase 8. ` +
-      `Detected premature confirmation pause language before Phase 8 stop gate. ` +
-      `Continue by finishing decomposition/validation/execution-plan steps and stop only after Phase 8 state update.`,
+      `After Phase 4 Approve, planning must continue in one run through Phase 5 and Phase 7. ` +
+      `Detected premature confirmation pause language before the terminal Phase 7 readiness gate. ` +
+      `Continue by finishing decomposition and validation; stop planning only after Phase 7 records a READY* verdict and planning_active=false.`,
     );
   }
 

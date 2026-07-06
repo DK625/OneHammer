@@ -1,191 +1,194 @@
 ---
 name: launch-discovery-agents
 description: >
-  Sub-skill for Phase 1 of planning-v2. Handles coverage for the four
-  feature-scoped discovery lanes. Subagents author artifact-ready lane Markdown
-  in responses; the main agent writes canonical artifacts under history/<feature>.
+  Phase 1 launcher protocol. Immediately launches missing/retryable discovery
+  lanes after successful Phase 0 using a versioned machine-checkable Agent
+  prompt contract. Each general-purpose subagent writes its own canonical lane
+  artifact; the main agent verifies files, compiles discovery.md, and owns state.
 ---
 
 # Phase 1: Discovery Lane Coverage Protocol
 
-You are executing Phase 1 of the planning pipeline. Your job is to obtain complete coverage for exactly four canonical lanes:
+Phase 1 starts immediately after Phase 0 succeeds. Do not broad-read requirement/code/docs with the main agent first. Launch the four orthogonal lanes:
 
 1. Architecture
 2. Patterns
 3. Constraints
 4. External
 
-Batching is an optimization, not the invariant. The invariant is: all four unique lanes must produce successful non-error outputs before Phase 1 can complete.
+All four use the same delivery promise: **full detailed, non-summary Markdown** written by the lane agent itself.
 
-## Pre-Launch Checklist
+All four use:
 
-Before emitting any Agent call, verify:
+- `subagent_type="general-purpose"`
+- `run_in_background=true`
+- exactly one canonical lane per Agent call
+- the exact versioned prompt block defined below
+- direct write to that lane's own canonical Markdown file
 
-- [ ] `<feature>` is substituted with the actual feature name in every prompt.
-- [ ] You know which lanes are already running, completed, failed, or missing from `phase_outputs.1.lanes` and existing lane artifacts.
-- [ ] You launch only missing or failed lanes; never relaunch a lane already `running`, `completed`, or `succeeded`.
-- [ ] Each launch identifies exactly one lane in `name`, `description`, and `prompt`.
-- [ ] Each launch uses `run_in_background=true` so missing lanes can run concurrently.
-- [ ] Each launch uses `subagent_type="Explore"` or `subagent_type="general-purpose"`.
-- [ ] Fullstack cross-cutting rule is stated in each prompt: backend-first, then frontend impact based on contract.
-- [ ] Each prompt requires the subagent to return artifact-ready Markdown in its response for the canonical lane path.
-- [ ] Each prompt forbids the subagent from writing files, artifacts, `history/`, `.planning`, `PLANNING_STATUS.md`, `discovery.md`, or JSON state.
-- [ ] Each prompt states that the main agent writes canonical lane files, compiles `discovery.md`, and manages `PLANNING_STATUS.md` plus JSON state.
-- [ ] You will write lane outputs only to canonical numbered artifact paths: `1-architecture.md`, `2-patterns.md`, `3-constraints.md`, `4-external.md`. Do not create unnumbered aliases like `architecture.md`.
+The canonical files are the handoff. The main agent reads/verifies those files, compiles `discovery.md`, and manages planning state; it does not retrieve/copy background response bodies into lane files.
 
-If any check fails, fix it first.
+## Fresh/Refresh Launch Order
 
-## Subagent Type Decision
+After Phase 0 is valid:
 
-`Explore` and `general-purpose` are both valid for Phase 1.
+1. Derive `HISTORY_ROOT` from `phase_outputs.0.project_index_root`; only use normal project/control root when no target repo exists.
+2. Ensure `HISTORY_ROOT/history/<feature>/discovery-lanes/` exists.
+3. Determine lane coverage from canonical files plus `phase_outputs.1.lanes`.
+4. Treat `missing`, `failed`, and `orphaned` as retryable.
+5. Treat `running` as non-retryable only when it carries a verified launch identity.
+6. Launch all retryable lanes immediately, preferably in one parallel batch.
+7. After launch acceptance, record launch identity if the runtime exposes it.
+8. Wait for canonical files; retry only missing/failed/orphaned lanes.
+9. Read/verify all four files, fill only specific gaps, compile `discovery.md`, then record Phase 1 completion.
 
-Prefer `Explore` for read-heavy lanes because it can use MCP/code intelligence while reducing write-side effects:
+## Critical State Lifecycle
 
-- Architecture: prefer `Explore`
-- Patterns: prefer `Explore`
-- Constraints: prefer `Explore`
-- External: use `Explore` if it has the required external-research tools; otherwise use `general-purpose`
+Never pre-mark a lane `running` before the Agent tool call succeeds.
 
-Use `general-purpose` when a lane needs tools unavailable to `Explore`. The main agent, not the discovery agents, writes lane artifacts and planning state.
-
-## Required Output Shape
-
-First output:
+Valid lifecycle:
 
 ```text
-=== PIPELINE STATUS ===
-Current Phase : 1 — Discovery (launching or waiting for missing lanes)
-Completed     : [list phases completed so far]
-Next Action   : Waiting for all four discovery lane outputs before Phase 1.5
-State file    : .planning/state/planning-state-v2.json
-=======================
+missing|failed|orphaned
+  -> PreToolUse accepts canonical Agent prompt
+  -> Agent launch is accepted
+  -> running + verified launch identity
+  -> canonical artifact appears
+  -> completed|succeeded
 ```
 
-Then immediately output `Agent` calls for the missing lanes only. You may launch 1, 2, 3, or 4 calls, depending on coverage state.
+A running lane is considered verifiable when state contains one of:
 
-## Fullstack cross-cutting note (embed into every prompt)
+- non-empty `agent_id`; or
+- non-empty `launch_id`; or
+- non-empty `attempt_id` together with non-empty `launch_confirmed_at`.
 
-Every agent prompt must carry this clause so the fullstack rule from `CLAUDE.md` is honored inside each lane:
+If PreToolUse denies the Agent call, or launch fails before a verifiable identity exists:
 
-> "This repo is a monorepo with `onehammerStore` (Python backend) and `onehammerUI` (Next.js frontend). Sweep both where your dimension requires. Report backend findings first as contract source of truth, then frontend impact based on that contract. If the feature is pure-backend or pure-frontend, state which half you skipped and why."
+- do not leave `status="running"`;
+- leave the lane `missing`, or record `failed`/`orphaned` with error evidence;
+- retry that lane with the canonical prompt.
 
-## Subagent Response Contract
+Refresh recovery rule: legacy/bad state with `status="running"` but no verified launch identity is classified as `orphaned` by the guard and is retryable. It must not create a permanent `already running` deadlock.
 
-Every discovery prompt must require the lane agent to return Markdown that is ready to persist as the lane artifact. The lane agent is the content author, but not the file writer.
+## Canonical Machine-Checkable Contract
 
-Required prompt language:
+Every discovery Agent prompt must contain exactly one block with these markers and keys. Copy it verbatim; change only `lane=` and `artifact=` to the actual lane/feature.
 
 ```text
-Return artifact-ready Markdown in your response for history/<feature>/discovery-lanes/<n>-<lane>.md.
-Do not write, edit, persist, create, or modify files, artifacts, history/, .planning, PLANNING_STATUS.md, discovery.md, or JSON state.
-The main agent writes canonical lane files, compiles discovery.md, and manages PLANNING_STATUS.md/JSON state.
-Include: Scope, Findings, Evidence with file paths/symbol names, backend first as source of truth, frontend impact, Browser Runbook candidates when durable UI route/login/selector/state cues are found, risks/constraints/gaps, and open questions.
-Target: compact but complete, roughly 50-120 lines unless the lane is truly tiny.
+[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]
+lane=<architecture|patterns|constraints|external>
+artifact=history/<feature>/discovery-lanes/<canonical-numbered-file>.md
+requirement_input=provided_requirement_source_or_current_request
+delivery=direct_canonical_markdown_file
+detail=full_detailed_non_summary
+write_scope=canonical_lane_file_only
+forbid=.planning/,planning-state-v2.json,discovery.md,other_lane_files
+main_agent_owns=read_verify_lane_files,compile_discovery_md,manage_planning_state
+handoff=canonical_file_not_background_response_body
+topology=read_active_repo_project_instructions,discover_actual_topology,provider_source_of_truth_before_dependent_consumer_impact
+browser_runbook_candidates=durable_ui_route_login_selector_state_cues
+[/PLANNING_DISCOVERY_AGENT_CONTRACT_V1]
 ```
 
-If a lane response is thin, missing evidence, or not artifact-ready, retry/enrich that lane from evidence. Do not compress it into a short main-agent summary and do not invent missing findings.
+Do not paraphrase the block. Additional lane-specific prose may appear before or after it, but the block itself is the guard contract.
 
-## Agent A — Architecture Discovery
+## Copy-Safe Launcher Prompts
+
+Substitute all placeholders before calling `Agent`. In particular:
+
+- `<feature>` must equal `state.feature`.
+- `<REQUIREMENT_SOURCE_PATH_OR_CURRENT_REQUEST>` must be the actual requirement source or current request.
+- `<HISTORY_ROOT>` must be the selected target repo root from Phase 0.
+
+### Architecture
 
 ```text
 Agent(
   name="phase1-architecture",
-  subagent_type="Explore",
-  description="Agent A: Architecture discovery — <feature>",
-  prompt="Map codebase architecture for feature <feature>.\nUse Serena/GitNexus/code intelligence as PRIMARY tools.\nReturn artifact-ready Markdown in your response for history/<feature>/discovery-lanes/1-architecture.md. Do not write, edit, persist, create, or modify files, artifacts, history/, .planning, PLANNING_STATUS.md, discovery.md, or JSON state. The main agent writes canonical lane files, compiles discovery.md, and manages PLANNING_STATUS.md/JSON state.\nInclude: Scope, packages/modules/entry points/module boundaries, target architecture sketch, Evidence with file paths/symbol names, backend first as source of truth, frontend impact, Browser Runbook candidates when durable UI cues are found, risks/constraints/gaps, and open questions. Target 50-120 lines unless the lane is truly tiny.\n\n<fullstack cross-cutting note>",
+  subagent_type="general-purpose",
+  description="Architecture discovery lane — <feature>",
+  prompt="Map architecture relevant to feature <feature>. Read requirement source/current request: <REQUIREMENT_SOURCE_PATH_OR_CURRENT_REQUEST>. Use Serena/GitNexus/code intelligence as primary tools when available.\n\n[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\nlane=architecture\nartifact=history/<feature>/discovery-lanes/1-architecture.md\nrequirement_input=provided_requirement_source_or_current_request\ndelivery=direct_canonical_markdown_file\ndetail=full_detailed_non_summary\nwrite_scope=canonical_lane_file_only\nforbid=.planning/,planning-state-v2.json,discovery.md,other_lane_files\nmain_agent_owns=read_verify_lane_files,compile_discovery_md,manage_planning_state\nhandoff=canonical_file_not_background_response_body\ntopology=read_active_repo_project_instructions,discover_actual_topology,provider_source_of_truth_before_dependent_consumer_impact\nbrowser_runbook_candidates=durable_ui_route_login_selector_state_cues\n[/PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\n\nWrite the full lane artifact directly to <HISTORY_ROOT>/history/<feature>/discovery-lanes/1-architecture.md. Read active repo/project instructions and discover actual topology before conclusions. Include scope, packages/modules/entry points/boundaries, architecture sketch, file/symbol evidence, provider/source-of-truth before dependent consumer impact when cross-surface, Browser Runbook candidates for durable UI route/login/selector/state cues, risks, constraints, gaps, and open questions. Preserve evidence and reasoning; do not compress to a short recap. Write only this lane file. The main agent owns discovery.md and planning state.",
   run_in_background=true
 )
 ```
 
-## Agent B — Pattern Discovery
+### Patterns
 
 ```text
 Agent(
   name="phase1-patterns",
-  subagent_type="Explore",
-  description="Agent B: Patterns discovery — <feature>",
-  prompt="Find reusable implementations, utilities, naming conventions, and coding patterns for feature <feature>.\nUse Serena/GitNexus/code intelligence as PRIMARY tools.\nReturn artifact-ready Markdown in your response for history/<feature>/discovery-lanes/2-patterns.md. Do not write, edit, persist, create, or modify files, artifacts, history/, .planning, PLANNING_STATUS.md, discovery.md, or JSON state. The main agent writes canonical lane files, compiles discovery.md, and manages PLANNING_STATUS.md/JSON state.\nInclude: Scope, reusable backend and frontend patterns, similar implemented features, conventions, anti-patterns, Evidence with file paths/symbol names, backend first as source of truth, frontend impact, Browser Runbook candidates when durable UI cues are found, risks/constraints/gaps, and open questions. Target 50-120 lines unless the lane is truly tiny.\n\n<fullstack cross-cutting note>",
+  subagent_type="general-purpose",
+  description="Patterns discovery lane — <feature>",
+  prompt="Find reusable implementations, utilities, naming conventions, and coding patterns for feature <feature>. Read requirement source/current request: <REQUIREMENT_SOURCE_PATH_OR_CURRENT_REQUEST>. Use Serena/GitNexus/code intelligence as primary tools when available.\n\n[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\nlane=patterns\nartifact=history/<feature>/discovery-lanes/2-patterns.md\nrequirement_input=provided_requirement_source_or_current_request\ndelivery=direct_canonical_markdown_file\ndetail=full_detailed_non_summary\nwrite_scope=canonical_lane_file_only\nforbid=.planning/,planning-state-v2.json,discovery.md,other_lane_files\nmain_agent_owns=read_verify_lane_files,compile_discovery_md,manage_planning_state\nhandoff=canonical_file_not_background_response_body\ntopology=read_active_repo_project_instructions,discover_actual_topology,provider_source_of_truth_before_dependent_consumer_impact\nbrowser_runbook_candidates=durable_ui_route_login_selector_state_cues\n[/PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\n\nWrite the full lane artifact directly to <HISTORY_ROOT>/history/<feature>/discovery-lanes/2-patterns.md. Read active repo/project instructions and discover actual topology before conclusions. Include scope, similar implementations, reusable utilities, conventions, anti-patterns, file/symbol evidence, provider/source-of-truth before dependent consumer impact when cross-surface, Browser Runbook candidates for durable UI route/login/selector/state cues, risks, constraints, gaps, and open questions. Preserve evidence and reasoning; do not compress to a short recap. Write only this lane file. The main agent owns discovery.md and planning state.",
   run_in_background=true
 )
 ```
 
-## Agent C — Constraint Discovery
+### Constraints
 
 ```text
 Agent(
   name="phase1-constraints",
-  subagent_type="Explore",
-  description="Agent C: Constraints discovery — <feature>",
-  prompt="Identify technical constraints for feature <feature>: package.json / pyproject / tsconfig, env vars, CI configs, runtime versions, available deps, build/test requirements.\nReturn artifact-ready Markdown in your response for history/<feature>/discovery-lanes/3-constraints.md. Do not write, edit, persist, create, or modify files, artifacts, history/, .planning, PLANNING_STATUS.md, discovery.md, or JSON state. The main agent writes canonical lane files, compiles discovery.md, and manages PLANNING_STATUS.md/JSON state.\nInclude: Scope, constraints by severity, technical boundaries, migration/runtime/auth/precision/build-test implications, Evidence with file paths/symbol names, backend first as source of truth, frontend impact, Browser Runbook candidates when durable UI cues are found, risks/gaps, and open questions. Target 50-120 lines unless the lane is truly tiny.\n\n<fullstack cross-cutting note>",
+  subagent_type="general-purpose",
+  description="Constraints discovery lane — <feature>",
+  prompt="Identify technical constraints for feature <feature>: manifests, config, environment, CI, runtime versions, dependencies, and build/test requirements. Read requirement source/current request: <REQUIREMENT_SOURCE_PATH_OR_CURRENT_REQUEST>.\n\n[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\nlane=constraints\nartifact=history/<feature>/discovery-lanes/3-constraints.md\nrequirement_input=provided_requirement_source_or_current_request\ndelivery=direct_canonical_markdown_file\ndetail=full_detailed_non_summary\nwrite_scope=canonical_lane_file_only\nforbid=.planning/,planning-state-v2.json,discovery.md,other_lane_files\nmain_agent_owns=read_verify_lane_files,compile_discovery_md,manage_planning_state\nhandoff=canonical_file_not_background_response_body\ntopology=read_active_repo_project_instructions,discover_actual_topology,provider_source_of_truth_before_dependent_consumer_impact\nbrowser_runbook_candidates=durable_ui_route_login_selector_state_cues\n[/PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\n\nWrite the full lane artifact directly to <HISTORY_ROOT>/history/<feature>/discovery-lanes/3-constraints.md. Read active repo/project instructions and discover actual topology before conclusions. Include scope, constraints by severity, technical boundaries, migration/runtime/auth/precision/build-test implications, file/symbol evidence, provider/source-of-truth before dependent consumer impact when cross-surface, Browser Runbook candidates for durable UI route/login/selector/state cues, risks, gaps, and open questions. Preserve evidence and reasoning; do not compress to a short recap. Write only this lane file. The main agent owns discovery.md and planning state.",
   run_in_background=true
 )
 ```
 
-## Agent D — External Discovery
+### External
 
 ```text
 Agent(
   name="phase1-external",
   subagent_type="general-purpose",
-  description="Agent D: External discovery — <feature>",
-  prompt="Research external knowledge for feature <feature>: design patterns, best practices, API docs, library references.\nUse Exa/web research as PRIMARY tools when available.\nReturn artifact-ready Markdown in your response for history/<feature>/discovery-lanes/4-external.md. Do not write, edit, persist, create, or modify files, artifacts, history/, .planning, PLANNING_STATUS.md, discovery.md, or JSON state. The main agent writes canonical lane files, compiles discovery.md, and manages PLANNING_STATUS.md/JSON state.\nInclude: Scope, external recommendations, references mapped to product/architecture decisions, Evidence/source links or doc names, backend first as source of truth, frontend impact, Browser Runbook candidates when durable UI cues are found, risks/constraints/gaps, and open questions. Target 50-120 lines unless the lane is truly tiny. Skip only if the feature is purely internal with no external library/integration.\n\n<fullstack cross-cutting note>",
+  description="External discovery lane — <feature>",
+  prompt="Research external knowledge for feature <feature>: design patterns, best practices, API docs, and library references. Read requirement source/current request: <REQUIREMENT_SOURCE_PATH_OR_CURRENT_REQUEST>. Use Exa/web research as primary tools when available.\n\n[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\nlane=external\nartifact=history/<feature>/discovery-lanes/4-external.md\nrequirement_input=provided_requirement_source_or_current_request\ndelivery=direct_canonical_markdown_file\ndetail=full_detailed_non_summary\nwrite_scope=canonical_lane_file_only\nforbid=.planning/,planning-state-v2.json,discovery.md,other_lane_files\nmain_agent_owns=read_verify_lane_files,compile_discovery_md,manage_planning_state\nhandoff=canonical_file_not_background_response_body\ntopology=read_active_repo_project_instructions,discover_actual_topology,provider_source_of_truth_before_dependent_consumer_impact\nbrowser_runbook_candidates=durable_ui_route_login_selector_state_cues\n[/PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\n\nWrite the full lane artifact directly to <HISTORY_ROOT>/history/<feature>/discovery-lanes/4-external.md. Read active repo/project instructions and discover actual topology before conclusions. Include scope, recommendations, sources mapped to product/architecture decisions, source links/doc names, provider/source-of-truth before dependent consumer impact when cross-surface, Browser Runbook candidates for durable UI route/login/selector/state cues, risks, constraints, gaps, and open questions. Preserve evidence and reasoning; do not compress to a short recap. If external research is not applicable, document that determination and evidence instead of skipping the lane. Write only this lane file. The main agent owns discovery.md and planning state.",
   run_in_background=true
 )
 ```
 
-## Waiting Gate Before Phase 1.5
+## Retry Classification
 
-Do not start Phase 1.5 until all four lanes have successful non-error results.
+Use canonical files as the strongest completion evidence.
 
-If any lane is still running:
-- do not ask the user business questions,
-- do not write partial discovery synthesis,
-- wait for the remaining agent output.
+| Observed state | Canonical file | Launch identity | Classification | Action |
+|---|---:|---:|---|---|
+| missing/no ledger | absent | no | `missing` | launch |
+| `failed` | absent | any | `failed` | retry lane |
+| `orphaned` | absent | any | `orphaned` | retry lane |
+| `running` | absent | no | `orphaned` | retry lane |
+| `running` | absent | yes | `running` | do not duplicate |
+| `completed`/`succeeded` | absent | any | `orphaned` | retry/repair lane |
+| any | present | any | `completed` | verify file; do not duplicate |
 
-If a lane failed:
-- record the lane as failed or blocked in `phase_outputs.1.lanes`,
-- relaunch only that lane when retryable,
-- if the failure is a rate limit, record `blocked_rate_limit` and `retry_after`, then pause instead of spawning duplicates.
+Rate-limit blocks remain separately controlled by `blocked_rate_limit` and `retry_after`.
 
-## Write Artifacts After All 4 Outputs
+## File Gate Before Phase 1.5
 
-After all four subagent responses are available, inspect each response for artifact-ready structure and evidence. Write lane artifacts near-verbatim from the subagent responses using exactly these canonical numbered filenames; the planning guard blocks unnumbered aliases:
-
-```text
-Write("history/<feature>/discovery-lanes/1-architecture.md", <agent_a_result>)
-Write("history/<feature>/discovery-lanes/2-patterns.md", <agent_b_result>)
-Write("history/<feature>/discovery-lanes/3-constraints.md", <agent_c_result>)
-Write("history/<feature>/discovery-lanes/4-external.md", <agent_d_result>)
-```
-
-If a response lacks evidence, backend-first analysis, frontend impact, Browser Runbook candidates when durable UI cues are found, risks/gaps, or enough detail for Phase 2 to avoid rediscovery, retry/enrich that lane before writing completion state. Then compile synthesis:
+Do not start Phase 1.5 until all four canonical files exist and are detailed, non-error outputs:
 
 ```text
-Write("history/<feature>/discovery.md", <compiled_feature_discovery>)
+history/<feature>/discovery-lanes/1-architecture.md
+history/<feature>/discovery-lanes/2-patterns.md
+history/<feature>/discovery-lanes/3-constraints.md
+history/<feature>/discovery-lanes/4-external.md
 ```
 
-`discovery.md` should include at minimum:
-- Scope
-- Architecture Findings (backend → frontend order)
-- Backend/API Contract Changes
-- Frontend Impact (based on contract)
-- Existing Patterns To Reuse
-- Technical Constraints
-- External References (Exa evidence)
-- GitNexus Evidence
-- Serena Evidence
-- Risks
-- Open Questions
-- Discovery Gaps
+Do not treat idle/availability notifications as lane content. Do not use a side channel to retrieve response bodies. Check the canonical files.
 
-## Update State
+## Compile and Complete
 
-After artifact writes, update `.planning/state/planning-state-v2.json`:
-- `current_phase`: `"1.5"`
-- add `"1"` to `completed_phases`
-- set `phase_outputs.1.status`: `"completed"`
-- record `discovery_path`
-- record `agents` and/or lane ledger:
+Once all four files exist:
+
+1. Read all four canonical files.
+2. Verify evidence/detail/topology/risk/gap coverage.
+3. Self-fill only a specific remaining gap when necessary; do not redo broad discovery.
+4. Compile `history/<feature>/discovery.md`.
+5. Record completed lane statuses and artifacts in the authoritative JSON state.
+
+Example completion ledger:
 
 ```json
 "lanes": {
@@ -196,8 +199,4 @@ After artifact writes, update `.planning/state/planning-state-v2.json`:
 }
 ```
 
-Write `history/<feature>/PLANNING_STATUS.md` first, then write the JSON state second.
-
-## Why Coverage Matters
-
-A missing lane silently degrades plan quality. Coverage-based recovery allows partial launches and retries without duplicate agents, while the completion gate still requires all four unique lane artifacts before Phase 1.5.
+The main agent owns `.planning/state/planning-state-v2.json`. Lane agents must never modify it.

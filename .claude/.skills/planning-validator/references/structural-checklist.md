@@ -18,9 +18,9 @@ Use this as the definitive list for V1 structural verification. A missing artifa
 ## `discovery.md` — 10 mandatory sections
 
 1. Scope
-2. Architecture Findings (backend → frontend order)
-3. Backend/API Contract Changes (or "None")
-4. Frontend Impact (based on contract)
+2. Architecture Findings (dependency / contract order)
+3. Contract / Interface Changes (or "None")
+4. Dependent Consumer Impact (UI/API/worker/etc., as applicable)
 5. Existing Patterns To Reuse
 6. Technical Constraints
 7. External References (Exa evidence)
@@ -70,17 +70,17 @@ Each bead must carry:
 - Acceptance / `verify:` field (runnable command or observable assertion)
 - Completion evidence gate: the bead says not to run `br close` until required runtime evidence is captured in the close reason or a named evidence artifact
 - BE/runtime verification details when applicable: API endpoint/method, auth/token source, expected status/response cues, DB query proof when named
-- Migration/provisioning decision clause when applicable: inspect existing Alembic revisions first, classify schema/data/seed/existing-proof/no-migration, and avoid duplicate seed migrations
+- Migration/provisioning decision clause when applicable: inspect existing repo-native migration/provisioning history first, classify schema/data/seed/existing-proof/no-migration, and avoid duplicate seed migrations
 - FE verification details when applicable: `agent-browser` action and screenshot checkpoint/path
 - File-scope hint (which paths it will touch)
 - Dependencies declared via `br dep add`
 
-## Fullstack fields (one_hammer specific)
+## Cross-surface fields
 
-When a phase touches both `onehammerStore` and `onehammerUI`:
+When a phase touches multiple components or repositories:
 
-- `phase-<n>-contract.md` must state which contract fields are being added/changed in the backend
-- `phase-<n>-story-map.md` must order backend stories before frontend stories that depend on them
-- Beads must label their half: backend beads touch `onehammerStore/**`, frontend beads touch `onehammerUI/**`
+- `phase-<n>-contract.md` must identify the contract provider/source of truth, the changed interface fields, and every dependent consumer surface
+- `phase-<n>-story-map.md` must order provider stories before consumer stories that depend on those contract changes
+- Beads must label their actual surface and concrete file scope using paths discovered from the active repo/project instructions; do not assume fixed backend/frontend directories
 
-If a phase is pure-frontend or pure-backend, state that explicitly in the contract's "Out of scope" field.
+If a phase is single-surface, state that explicitly in the contract's "Out of scope" field and name the intentionally unaffected surfaces when relevant.

@@ -44,9 +44,9 @@ Bead says what to build but not how, and "how" has multiple incompatible interpr
 - Fail: `verify: write tests` (this is implementation, not verification)
 - Pass: `verify: npm test -- --grep 'RateLimiter' → 5 green. curl 101 sequential requests → 101st returns 429.`
 
-### C6. Fullstack contract mismatch (one_hammer specific)
+### C6. Cross-surface contract mismatch
 
-Bead touches `onehammerUI/**` but references a backend endpoint/schema that is not defined in any prior-phase or current-phase backend bead.
+A consumer-side bead (UI, client, worker, service, or another repo) references an endpoint/schema/interface that is not defined or owned by any prior-phase or current-phase provider bead.
 
 - Fail: FE bead calls `POST /api/v2/rooms/batch` but no backend bead creates that route
 - Pass: FE bead cites the backend bead (`br-abc`) that owns the endpoint

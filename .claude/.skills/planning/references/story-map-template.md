@@ -98,7 +98,7 @@ If any box is unchecked, revise the map before creating beads.
 
 ## 5. Story-To-Bead Mapping
 
-> Fill this in after bead creation so validating and swarming can see how the narrative maps to executable work. Use the exact canonical issue IDs returned by `br create` / `br list --json` (for this repo, `one_hammer-*`), not short aliases such as `br-*`.
+> Fill this in after bead creation so validating and swarming can see how the narrative maps to executable work. Use the exact canonical issue IDs returned by `br create` / `br list --json`, preserving whatever project prefix the active repository uses; do not assume a fixed prefix and do not write short aliases such as `br-*`.
 
 | Story | Beads | Notes |
 |-------|-------|-------|

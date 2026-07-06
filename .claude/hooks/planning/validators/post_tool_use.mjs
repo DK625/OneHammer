@@ -1,6 +1,7 @@
 // validators/post_tool_use.mjs
 // Validates artifacts just written/edited and parses bv robot output for cycles.
 
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { additionalContext, topLevelBlock } from "../lib/diagnostics.mjs";
 import { PHASE_SEQUENCE, phaseIndex } from "../lib/phase_gates.mjs";
@@ -12,14 +13,21 @@ import {
   CONTRACT_SECTIONS, STORY_MAP_SECTIONS,
   looksLikeStateFile, extractFilePath,
 } from "../lib/artifacts.mjs";
-import { readState, fileExists, isLightweightMode } from "../lib/state.mjs";
+import { readState, fileExists, isLightweightMode, resolvePlanningPath, featureWorkspacePath, historyRoot } from "../lib/state.mjs";
+import { validateRecordedIndexResolution } from "../lib/index_root_resolver.mjs";
+import {
+  DISCOVERY_CONTRACT_BEGIN, hasVerifiedDiscoveryLaunchIdentity,
+} from "../lib/discovery_agent_contract.mjs";
 
 const REQUIRED_MCP_SERVERS = ["serena", "exa", "gitnexus"];
 const PHASE_ZERO_BOOL_FIELDS = [
   "mcp_json_checked",
   "serena_onboarding_checked",
   "serena_ready",
-  "gitnexus_reindex_asked",
+  "project_index_ran",
+  "project_index_ok",
+  "serena_index_ok",
+  "gitnexus_index_ok",
   "br_help_ok",
   "bv_help_ok",
   "jq_ok",
@@ -34,7 +42,7 @@ const DISCOVERY_LANE_PATHS = [
   { id: "constraints", label: "Constraints", rel: (feature) => `history/${feature}/discovery-lanes/3-constraints.md` },
   { id: "external", label: "External", rel: (feature) => `history/${feature}/discovery-lanes/4-external.md` },
 ];
-const PHASE_1_LAUNCH_GUIDANCE = `IMPORTANT: You are now in planning Phase 1 discovery. Launch the four canonical discovery lanes once (Architecture, Patterns, Constraints, External), then wait for artifact-ready Markdown responses. Each discovery Agent prompt must require lane content in the subagent response only, forbid file/state writes, and state that the main agent writes canonical numbered lane artifacts (1-architecture.md, 2-patterns.md, 3-constraints.md, 4-external.md), compiles discovery.md, and manages PLANNING_STATUS.md/JSON state. Do not relaunch a whole batch just because state or artifacts do not yet show all four lanes. After outputs are observable, verify coverage and prime only lanes that are still missing or retryable failed. Use subagent_type="Explore" or "general-purpose" and run_in_background=true before Phase 1.5.`;
+const PHASE_1_LAUNCH_GUIDANCE = `IMPORTANT: Phase 0 succeeded; start Phase 1 immediately. Copy the exact ${DISCOVERY_CONTRACT_BEGIN} prompt block from .claude/skills/planning/agents/launch-discovery-agents.md for each missing lane, substitute the actual feature/artifact, and launch as subagent_type="general-purpose" with run_in_background=true before broad main-agent exploration. Do not pre-mark lanes running. Record status="running" only after an accepted launch with agent_id/launch_id (or attempt_id plus launch_confirmed_at). A running lane without launch identity is orphaned/retryable. After all four canonical files exist, read/verify them, fill only specific gaps, compile discovery.md, and record completion state.`;
 
 const QUESTIONS_PER_ROUND = 4;
 const PHASE_15_TOTAL_QUESTIONS = 12;
@@ -69,7 +77,8 @@ export async function validatePostToolUse(input, projectDir) {
         );
       }
 
-      const abs = fp.startsWith("/") ? fp : join(projectDir, fp);
+      const { state: pathState } = await readState(projectDir);
+      const abs = resolvePlanningPath(projectDir, pathState, fp);
       if (looksLikeApproachFile(fp)) {
         const text = await readFileSafe(abs);
         if (text != null) {
@@ -124,7 +133,7 @@ export async function validatePostToolUse(input, projectDir) {
           }
         }
       }
-      // Validate state updates: JSON state must be the final phase-transition write after PLANNING_STATUS.md.
+      // Validate the authoritative JSON state update and all phase invariants.
       if (looksLikeStateFile(fp)) {
         const maybe = await validateStateTransition(projectDir);
         if (maybe) return maybe;
@@ -192,7 +201,7 @@ async function phase1LaunchGuidance(projectDir) {
   const completed = Array.isArray(state.completed_phases)
     ? state.completed_phases.map(String)
     : [];
-  if (!completed.includes("0.5")) return null;
+  if (!completed.includes("0")) return null;
   if (state.phase_outputs?.["1"]?.status === "completed") return null;
   return additionalContext("PostToolUse", PHASE_1_LAUNCH_GUIDANCE);
 }
@@ -249,7 +258,7 @@ async function phase3Phase4ContinuityGuidance(projectDir) {
   if (cp === "4") {
     return additionalContext(
       "PostToolUse",
-      "IMPORTANT: Phase 4 should end with the exact approval AskUserQuestion for the whole story-map set (Approve/Revise). Do not insert extra confirmation pauses before that approval prompt. After exact Approve, continue immediately in one run through Phase 5, Phase 7, and Phase 8.",
+      "IMPORTANT: Phase 4 should end with the exact approval AskUserQuestion for the whole story-map set (Approve/Revise). Do not insert extra confirmation pauses before that approval prompt. After exact Approve, continue immediately in one run through Phase 5 and Phase 7, then stop planning when Phase 7 records a READY* verdict.",
     );
   }
 
@@ -264,7 +273,7 @@ async function phase3Phase4ContinuityGuidance(projectDir) {
     if (approved) {
       return additionalContext(
         "PostToolUse",
-        "IMPORTANT: Phase 4 was approved. Continue planning in one run with no extra confirmation pauses: Phase 5 decomposition -> Phase 7 validation -> Phase 8 execution plan hard stop.",
+        "IMPORTANT: Phase 4 was approved. Continue planning in one run with no extra confirmation pauses: Phase 5 decomposition -> Phase 7 validation -> stop with the validated bead graph/state on READY/READY_LITE/READY_TARGETED.",
       );
     }
   }
@@ -282,39 +291,9 @@ async function validateStateTransition(projectDir) {
   const orderingIssue = validatePhaseOrdering(state);
   if (orderingIssue) return topLevelBlock(orderingIssue);
 
-  const phase0Issue = await validatePhase0Evidence(projectDir, po["0"]);
+  const phase0Issue = await validatePhase0Evidence(projectDir, state, po["0"]);
   if (phase0Issue) return topLevelBlock(phase0Issue);
 
-  if (state.feature) {
-    const statusPath = join(projectDir, "history", state.feature, "PLANNING_STATUS.md");
-    if (!(await fileExists(statusPath))) {
-      return topLevelBlock(
-        `Dual-state invariant failed: .planning/state/planning-state-v2.json was updated but ` +
-        `history/${state.feature}/PLANNING_STATUS.md does not exist. ` +
-        `Write PLANNING_STATUS.md first, then write the JSON state as the final transition step.`,
-      );
-    }
-    const statusText = await readFileSafe(statusPath);
-    const currentPhase = String(state.current_phase ?? "");
-    const approved = String(state.phase_plan_approved === true);
-    const missingStatusBits = [];
-    if (!new RegExp(`\\*\\*Feature\\*\\*\\s*:?\\s*${escapeRe(state.feature)}`).test(statusText || "")) {
-      missingStatusBits.push("Feature");
-    }
-    if (!new RegExp(`\\*\\*Current Phase\\*\\*\\s*:?\\s*${escapeRe(currentPhase)}\\b`).test(statusText || "")) {
-      missingStatusBits.push("Current Phase");
-    }
-    if (!(statusText || "").includes(`phase_plan_approved = ${approved}`)) {
-      missingStatusBits.push("Phase Plan Approved");
-    }
-    if (missingStatusBits.length > 0) {
-      return topLevelBlock(
-        `Dual-state invariant failed: history/${state.feature}/PLANNING_STATUS.md is missing or stale for ` +
-        `${missingStatusBits.join(", ")}. Update PLANNING_STATUS.md from references/planning-status-template.md ` +
-        `before writing .planning/state/planning-state-v2.json.`,
-      );
-    }
-  }
 
   const checks = [
     { k: "1", fields: ["discovery_path"] },
@@ -324,7 +303,6 @@ async function validateStateTransition(projectDir) {
     { k: "2.5", fields: ["phase_plan_path"] },
     { k: "3", fields: ["contract_paths", "contract_path"] },
     { k: "4", fields: ["story_map_paths", "story_map_path"] },
-    { k: "8", fields: ["plan_path"] },
   ];
   for (const c of checks) {
     const entry = po[c.k];
@@ -345,7 +323,7 @@ async function validateStateTransition(projectDir) {
           `State says phase ${c.k} is completed but phase_outputs.${c.k}.${field} contains an empty artifact path.`,
         );
       }
-      const abs = rel.startsWith("/") ? rel : join(projectDir, rel);
+      const abs = resolvePlanningPath(projectDir, state, rel);
       if (!(await fileExists(abs))) {
         return topLevelBlock(
           `State says phase ${c.k} is completed but ${field} '${rel}' does not exist on disk. ` +
@@ -354,6 +332,9 @@ async function validateStateTransition(projectDir) {
       }
     }
   }
+
+  const phase1LifecycleIssue = validatePhase1LaneLifecycle(po["1"]);
+  if (phase1LifecycleIssue) return topLevelBlock(phase1LifecycleIssue);
 
   const phase1Issue = await validatePhase1Artifacts(projectDir, state, po["1"]);
   if (phase1Issue) return topLevelBlock(phase1Issue);
@@ -378,13 +359,7 @@ async function validateStateTransition(projectDir) {
     ? state.completed_phases.map(String)
     : [];
   const p7 = po["7"] || {};
-  const p8 = po["8"] || {};
-  const phase8Reached =
-    phaseIndex(String(state.current_phase ?? "")) >= phaseIndex("8") ||
-    completed.includes("8") ||
-    ["in_progress", "completed"].includes(String(p8.status ?? ""));
-
-  const phase7GateIssue = validatePhase7AtomicGate(p7, { phase8Reached, completed });
+  const phase7GateIssue = validatePhase7AtomicGate(state, p7, { completed });
   if (phase7GateIssue) return topLevelBlock(phase7GateIssue);
 
   const p4Approval = po["4_approval"];
@@ -427,7 +402,7 @@ async function validateStateTransition(projectDir) {
           `Phase 4 approval marked completed but story_map_paths contains an empty artifact path.`,
         );
       }
-      const absP4 = rel.startsWith("/") ? rel : join(projectDir, rel);
+      const absP4 = resolvePlanningPath(projectDir, state, rel);
       if (!(await fileExists(absP4))) {
         return topLevelBlock(
           `Phase 4 approval marked completed but story_map_paths entry '${rel}' does not exist on disk.`,
@@ -445,15 +420,11 @@ async function validateStateTransition(projectDir) {
   return null;
 }
 
-function validatePhase7AtomicGate(p7, { phase8Reached, completed }) {
+function validatePhase7AtomicGate(state, p7, { completed }) {
   const hasPhase7Record = p7 && Object.keys(p7).length > 0;
-  if (!hasPhase7Record && !phase8Reached) return null;
+  if (!hasPhase7Record) return null;
 
   if (p7.status !== "completed") {
-    if (phase8Reached) {
-      return `Before Phase 8, phase_outputs.7.status must be \"completed\". ` +
-        `Update Phase 7 atomically (status, validation_mode, cycles_found, semantic_verdict, validator_invocation_id, completed_phases) before current_phase=8.`;
-    }
     return null;
   }
 
@@ -465,13 +436,13 @@ function validatePhase7AtomicGate(p7, { phase8Reached, completed }) {
 
   const cyclesFound = Number(p7.cycles_found);
   if (!Number.isFinite(cyclesFound) || cyclesFound !== 0) {
-    return `Phase 7 marked completed but cycles_found must be 0 before Phase 8 (current: ${p7.cycles_found ?? "missing"}).`;
+    return `Phase 7 marked completed but cycles_found must be 0 (current: ${p7.cycles_found ?? "missing"}).`;
   }
 
   const verdict = String(p7.semantic_verdict ?? "");
   if (!PHASE7_READY_VERDICTS.has(verdict)) {
     return `Phase 7 marked completed but semantic validation is incomplete. ` +
-      `Require semantic_verdict in ${Array.from(PHASE7_READY_VERDICTS).join("/")} before advancing.`;
+      `Require semantic_verdict in ${Array.from(PHASE7_READY_VERDICTS).join("/")} before completing terminal Phase 7.`;
   }
 
   const validatorId = p7.validator_invocation_id;
@@ -485,7 +456,17 @@ function validatePhase7AtomicGate(p7, { phase8Reached, completed }) {
 
   if (!completed.includes("7")) {
     return `Phase 7 marked completed but completed_phases is missing \"7\". ` +
-      `Add \"7\" before setting current_phase=8.`;
+      `Add \"7\" in the same atomic terminal state update.`;
+  }
+
+  if (String(state.current_phase ?? "") !== "7") {
+    return `Phase 7 marked completed with a READY* verdict but current_phase must remain \"7\" as the terminal planning phase ` +
+      `(current: ${state.current_phase ?? "missing"}).`;
+  }
+
+  if (state.planning_active !== false) {
+    return `Phase 7 marked completed with a READY* verdict but planning_active must be false. ` +
+      `End the mandatory planning pipeline atomically at Phase 7.`;
   }
 
   return null;
@@ -516,9 +497,7 @@ async function validateFeaturePlanCoverageForBeads(projectDir, state, phaseOutpu
     return "Phase 5 coverage gate failed: phase_outputs.2.5.phase_plan_path is missing.";
   }
 
-  const absPhasePlan = phasePlanPath.startsWith("/")
-    ? phasePlanPath
-    : join(projectDir, phasePlanPath);
+  const absPhasePlan = resolvePlanningPath(projectDir, state, phasePlanPath);
   const phasePlanText = await readFileSafe(absPhasePlan);
   if (!phasePlanText) {
     return `Phase 5 coverage gate failed: phase-plan '${phasePlanPath}' is missing or unreadable.`;
@@ -534,8 +513,8 @@ async function validateFeaturePlanCoverageForBeads(projectDir, state, phaseOutpu
   for (const n of phaseNumbers) {
     const contractRel = `history/${feature}/contracts/phase-${n}-contract.md`;
     const storyRel = `history/${feature}/story-maps/phase-${n}-story-map.md`;
-    if (!(await fileExists(join(projectDir, contractRel)))) missing.push(contractRel);
-    if (!(await fileExists(join(projectDir, storyRel)))) missing.push(storyRel);
+    if (!(await fileExists(resolvePlanningPath(projectDir, state, contractRel)))) missing.push(contractRel);
+    if (!(await fileExists(resolvePlanningPath(projectDir, state, storyRel)))) missing.push(storyRel);
   }
 
   if (missing.length > 0) {
@@ -554,14 +533,11 @@ async function validatePhase5BeadCoverage(projectDir, state, phaseOutputs) {
     : [];
   const p5 = phaseOutputs?.["5"] || {};
   const p7 = phaseOutputs?.["7"] || {};
-  const p8 = phaseOutputs?.["8"] || {};
   const curIdx = phaseIndex(String(state.current_phase ?? ""));
   const phase7Reached =
     curIdx >= phaseIndex("7") ||
     completed.includes("7") ||
-    completed.includes("8") ||
-    ["completed", "in_progress"].includes(String(p7.status ?? "")) ||
-    ["completed", "in_progress"].includes(String(p8.status ?? ""));
+    ["completed", "in_progress"].includes(String(p7.status ?? ""));
 
   if (!phase7Reached) return null;
 
@@ -575,9 +551,7 @@ async function validatePhase5BeadCoverage(projectDir, state, phaseOutputs) {
     return "Phase 5 bead coverage gate failed: phase_outputs.2.5.phase_plan_path is missing.";
   }
 
-  const absPhasePlan = phasePlanPath.startsWith("/")
-    ? phasePlanPath
-    : join(projectDir, phasePlanPath);
+  const absPhasePlan = resolvePlanningPath(projectDir, state, phasePlanPath);
   const phasePlanText = await readFileSafe(absPhasePlan);
   if (!phasePlanText) {
     return `Phase 5 bead coverage gate failed: phase-plan '${phasePlanPath}' is missing or unreadable.`;
@@ -604,9 +578,10 @@ async function validatePhase5BeadCoverage(projectDir, state, phaseOutputs) {
     return `Phase 5 bead coverage gate failed: phase_outputs.5.story_map_paths is incomplete. Missing: ${missingFromState.join(", ")}.`;
   }
 
+  const knownCanonicalBeadIds = await collectKnownCanonicalBeadIds(projectDir, state);
   const uncoveredMaps = [];
   for (const storyRel of expectedStoryMaps) {
-    const storyAbs = join(projectDir, storyRel);
+    const storyAbs = resolvePlanningPath(projectDir, state, storyRel);
     const storyText = await readFileSafe(storyAbs);
     if (!storyText) {
       uncoveredMaps.push(`${storyRel} (missing/unreadable)`);
@@ -618,8 +593,8 @@ async function validatePhase5BeadCoverage(projectDir, state, phaseOutputs) {
       continue;
     }
 
-    if (!/\bone_hammer-[a-z0-9]+\b/i.test(storyText)) {
-      uncoveredMaps.push(`${storyRel} (no canonical actual Beads issue id found in Story-To-Bead mapping; use one_hammer-* from br, not br-* aliases)`);
+    if (!storyMapHasCanonicalBeadId(storyText, knownCanonicalBeadIds)) {
+      uncoveredMaps.push(`${storyRel} (no canonical actual Beads issue id found in Story-To-Bead mapping; preserve the exact ID returned by br and do not assume a project prefix)`);
     }
   }
 
@@ -629,6 +604,58 @@ async function validatePhase5BeadCoverage(projectDir, state, phaseOutputs) {
   }
 
   return null;
+}
+
+
+async function collectKnownCanonicalBeadIds(projectDir, state) {
+  const roots = new Set([projectDir, historyRoot(projectDir, state)]);
+  const ids = new Set();
+
+  for (const root of roots) {
+    for (const rel of [".beads/issues.jsonl", ".beads/beads.jsonl"]) {
+      const text = await readFileSafe(join(root, rel));
+      if (!text) continue;
+      for (const line of text.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const issue = JSON.parse(trimmed);
+          const id = String(issue?.id || "").trim();
+          if (id && !/^br-/i.test(id)) ids.add(id);
+        } catch {
+          continue;
+        }
+      }
+    }
+  }
+
+  return ids;
+}
+
+export function storyMapHasCanonicalBeadId(storyText, knownIds) {
+  const text = String(storyText || "");
+  const mappingMatch = text.match(/(?:^|\n)#{1,6}\s*(?:\d+\.\s*)?Story-To-Bead Mapping\b[\s\S]*/i);
+  const mapping = mappingMatch ? mappingMatch[0] : text;
+
+  for (const id of knownIds) {
+    if (mapping.includes(id)) return true;
+  }
+
+  const beadCells = mapping
+    .split(/\r?\n/)
+    .filter((line) => /^\s*\|/.test(line))
+    .map((line) => line.split("|").map((cell) => cell.trim()))
+    .filter((cells) => cells.length >= 4)
+    .map((cells) => cells[2])
+    .filter((cell) => cell && !/^beads?$/i.test(cell) && !/^[-:]+$/.test(cell));
+
+  const candidates = beadCells.flatMap((cell) =>
+    cell.match(/\b[a-z0-9][a-z0-9_.-]*-[a-z0-9]{2,}\b/gi) || []
+  );
+  return candidates.some((id) =>
+    !/^br-/i.test(id) &&
+    !/^(phase|story|feature|issue|actual|beads?)-/i.test(id)
+  );
 }
 
 function extractFeaturePlanPhaseNumbers(phasePlanText) {
@@ -691,16 +718,12 @@ function requiredPriorPhases(phaseId, lightweight) {
   );
 }
 
-async function validatePhase0Evidence(projectDir, p0) {
+async function validatePhase0Evidence(projectDir, state, p0) {
   if (!isCompletedStatus(p0, { allowPassed: true })) return null;
 
-  const configured = await readConfiguredMcpServers(projectDir);
-  if (!configured.ok) {
-    return `Phase 0 marked completed but .mcp.json could not be verified: ${configured.error}.`;
-  }
-  const missingConfigured = REQUIRED_MCP_SERVERS.filter((name) => !configured.servers.includes(name));
-  if (missingConfigured.length > 0) {
-    return `Phase 0 marked completed but .mcp.json is missing required MCP server(s): ${missingConfigured.join(", ")}.`;
+  const feature = String(state?.feature ?? "").trim();
+  if (!feature) {
+    return "Phase 0 marked completed but state.feature is missing; cannot verify target-repo-scoped feature workspace.";
   }
 
   const missingBoolFields = PHASE_ZERO_BOOL_FIELDS.filter((field) => p0[field] !== true);
@@ -716,18 +739,106 @@ async function validatePhase0Evidence(projectDir, p0) {
     return `Phase 0 marked completed but phase_outputs.0.mcp_servers_verified is missing: ${missingVerified.join(", ")}.`;
   }
 
-  const reindexResponse = p0.gitnexus_reindex_response;
-  if (reindexResponse !== "Yes" && reindexResponse !== "No") {
-    return `Phase 0 marked completed but phase_outputs.0.gitnexus_reindex_response must be "Yes" or "No".`;
+  const requiredProvenanceFields = [
+    "project_index_root",
+    "project_index_control_root",
+    "project_index_anchor_path",
+    "project_index_root_source",
+  ];
+  const missingProvenance = requiredProvenanceFields.filter(
+    (field) => typeof p0[field] !== "string" || p0[field].trim().length === 0,
+  );
+  if (missingProvenance.length > 0) {
+    return `Phase 0 marked completed but phase_outputs.0 is missing project-index provenance field(s): ${missingProvenance.join(", ")}.`;
   }
-  if (reindexResponse === "Yes") {
-    if (p0.gitnexus_reindex_ran !== true || p0.gitnexus_reindex_ok !== true) {
-      return `Phase 0 marked completed after GitNexus reindex approval but phase_outputs.0 must record gitnexus_reindex_ran=true and gitnexus_reindex_ok=true.`;
+
+  const resolution = await validateRecordedIndexResolution(p0, { controlRoot: projectDir });
+  if (!resolution.ok) {
+    return `Phase 0 marked completed but project-index root evidence is unsafe or inconsistent: ${resolution.error}`;
+  }
+
+  const backgroundIndexIssue = await validateBackgroundIndexEvidence(projectDir, p0);
+  if (backgroundIndexIssue) return backgroundIndexIssue;
+
+  const featurePath = String(p0.feature_path ?? "").trim();
+  if (!featurePath) {
+    return "Phase 0 marked completed but phase_outputs.0.feature_path is missing. Record target-repo-relative history/<feature>/ as part of pre-flight.";
+  }
+
+  const expectedWorkspace = featureWorkspacePath(projectDir, state);
+  const recordedWorkspace = resolvePlanningPath(projectDir, state, featurePath);
+  const selectedRoot = historyRoot(state, projectDir);
+  if (!expectedWorkspace || recordedWorkspace !== expectedWorkspace) {
+    return `Phase 0 marked completed but phase_outputs.0.feature_path must resolve to target-repo-scoped history/${feature}/ ` +
+      `under ${selectedRoot} (current: ${featurePath}).`;
+  }
+
+  try {
+    const info = await stat(expectedWorkspace);
+    if (!info.isDirectory()) {
+      return `Phase 0 marked completed but target-repo-scoped feature workspace '${expectedWorkspace}' is not a directory.`;
     }
-  } else if (p0.gitnexus_reindex_ran !== false) {
-    return `Phase 0 marked completed after GitNexus reindex skip but phase_outputs.0.gitnexus_reindex_ran must be false.`;
-  } else if (typeof p0.gitnexus_reindex_skip_reason !== "string" || p0.gitnexus_reindex_skip_reason.trim().length === 0) {
-    return `Phase 0 marked completed after GitNexus reindex skip but phase_outputs.0.gitnexus_reindex_skip_reason is missing.`;
+  } catch {
+    return `Phase 0 marked completed but target-repo-scoped feature workspace '${expectedWorkspace}' does not exist. ` +
+      `Create '${expectedWorkspace}' during pre-flight; do not create it under CONTROL_ROOT when the selected target repo is ${selectedRoot}.`;
+  }
+
+  const configured = await readConfiguredMcpServers(projectDir);
+  if (!configured.ok) {
+    return `Phase 0 marked completed but .mcp.json could not be verified: ${configured.error}.`;
+  }
+  const missingConfigured = REQUIRED_MCP_SERVERS.filter((name) => !configured.servers.includes(name));
+  if (missingConfigured.length > 0) {
+    return `Phase 0 marked completed but .mcp.json is missing required MCP server(s): ${missingConfigured.join(", ")}.`;
+  }
+
+  return null;
+}
+
+
+async function validateBackgroundIndexEvidence(_projectDir, p0) {
+  const mode = String(p0?.project_index_execution_mode ?? "").trim();
+  if (!mode) return null; // Legacy state may omit mode; explicit synchronous/background values are validated below.
+  if (mode !== "synchronous" && mode !== "background") {
+    return `Phase 0 marked completed but phase_outputs.0.project_index_execution_mode is invalid: ${mode}.`;
+  }
+  if (mode !== "background") return null;
+
+  const jobId = String(p0?.project_index_job_id ?? "").trim();
+  if (!/^[A-Za-z0-9._-]+$/.test(jobId)) {
+    return "Phase 0 background indexing is marked completed but project_index_job_id is missing or unsafe.";
+  }
+
+  const jobs = p0?.project_index_jobs;
+  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) {
+    return "Phase 0 background indexing is marked completed but phase_outputs.0.project_index_jobs state metadata is missing.";
+  }
+  const record = jobs[jobId];
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    return `Phase 0 background indexing job '${jobId}' has no authoritative metadata record in phase_outputs.0.project_index_jobs.`;
+  }
+
+  const recordedTarget = String(record.target_root ?? "").trim();
+  if (!recordedTarget) {
+    return `Phase 0 background indexing job '${jobId}' has no target_root evidence in planning-state-v2.json.`;
+  }
+  if (recordedTarget !== String(p0.project_index_root ?? "").trim()) {
+    return `Phase 0 background indexing job '${jobId}' targeted '${recordedTarget}', not recorded project_index_root '${p0.project_index_root}'.`;
+  }
+
+  const status = String(record.status ?? "").trim();
+  if (status === "queued" || status === "running" || record.exit_code == null) {
+    return `Phase 0 background indexing job '${jobId}' is still running or has not published terminal state in planning-state-v2.json. Wait/collect it before completing Phase 0.`;
+  }
+  if (!Number.isSafeInteger(record.exit_code) || record.exit_code < 0) {
+    return `Phase 0 background indexing job '${jobId}' has invalid exit code evidence: '${String(record.exit_code)}'.`;
+  }
+  if (record.exit_code !== 0 || status !== "succeeded") {
+    return `Phase 0 background indexing job '${jobId}' failed (status=${status || "failed"}, exit_code=${record.exit_code}). Stop planning and report the index error; do not continue to discovery.`;
+  }
+
+  if (p0.project_index_waited !== true || typeof record.collected_at !== "string" || !record.collected_at.trim()) {
+    return `Phase 0 background indexing job '${jobId}' was not collected. Run index.sh --wait --job '${jobId}' and only continue when it exits 0.`;
   }
 
   return null;
@@ -747,6 +858,19 @@ async function readConfiguredMcpServers(projectDir) {
   }
 }
 
+
+function validatePhase1LaneLifecycle(p1) {
+  const lanes = p1?.lanes;
+  if (!lanes || typeof lanes !== "object") return null;
+  const orphanRunning = DISCOVERY_LANE_PATHS
+    .filter((lane) => String(lanes[lane.id]?.status ?? "") === "running" && !hasVerifiedDiscoveryLaunchIdentity(lanes[lane.id]))
+    .map((lane) => lane.label);
+  if (orphanRunning.length === 0) return null;
+  return `Phase 1 lane state invalid: status="running" without verified launch identity for ${orphanRunning.join(", ")}. ` +
+    `Do not pre-mark running before Agent spawn. Leave the lane missing/failed/orphaned until launch succeeds; after an accepted launch record agent_id/launch_id, or attempt_id plus launch_confirmed_at. ` +
+    `The PreToolUse guard classifies identity-less running entries as orphaned/retryable so refresh-session relaunch is not deadlocked.`;
+}
+
 async function validatePhase1Artifacts(projectDir, state, p1) {
   if (!isCompletedStatus(p1)) return null;
   if (!state.feature) return `Phase 1 marked completed but state.feature is missing.`;
@@ -754,10 +878,10 @@ async function validatePhase1Artifacts(projectDir, state, p1) {
   const missingLanes = [];
   for (const lane of DISCOVERY_LANE_PATHS) {
     const rel = lane.rel(state.feature);
-    if (!(await fileExists(join(projectDir, rel)))) missingLanes.push(`${lane.label} (${rel})`);
+    if (!(await fileExists(resolvePlanningPath(projectDir, state, rel)))) missingLanes.push(`${lane.label} (${rel})`);
   }
   if (missingLanes.length > 0) {
-    return `Phase 1 marked completed but discovery lane artifact(s) are missing: ${missingLanes.join(", ")}.`;
+    return `Phase 1 marked completed but lane-agent-owned canonical discovery file(s) are missing: ${missingLanes.join(", ")}. Wait for/retry only the missing lane agents; do not substitute main-agent summaries.`;
   }
 
   const agents = Array.isArray(p1.agents) ? p1.agents.filter((id) => typeof id === "string" && id.trim().length > 0) : [];
@@ -858,7 +982,7 @@ async function validatePhase16QuestionsAndScenarios(projectDir, state, p16) {
 
   const rel = String(p16.test_scenarios_path || "").trim();
   if (!rel) return `Phase 1.6 marked completed but test_scenarios_path is empty.`;
-  const abs = rel.startsWith("/") ? rel : join(projectDir, rel);
+  const abs = resolvePlanningPath(projectDir, state, rel);
   const text = await readFileSafe(abs);
   if (!text) {
     return `Phase 1.6 marked completed but test-scenarios artifact '${rel}' is missing or unreadable.`;
@@ -879,22 +1003,22 @@ async function validatePhase16QuestionsAndScenarios(projectDir, state, p16) {
   return null;
 }
 
-function validateBootstrapProvisioningInvariant(text) {
+export function validateBootstrapProvisioningInvariant(text) {
   const lower = String(text || "").toLowerCase();
   if (!lower) return null;
 
   const hasRuntimeSettingsSource = /(db\s+settings|settings\s+key|settings\s+table|source\s+of\s+truth|config\s+key)/.test(lower);
   const expectsRuntime200 = /(get\s+\/api\/|\/api\/|expected\s+200|returns?\s+200|status\s+200|payload)/.test(lower);
-  const mentionsMissingConfigFail = /(missing\s+config|missing\s+setting|fail\s+500|500\s*\/\s*domain\s+error|domain\s+error|catalog_missing)/.test(lower);
+  const mentionsMissingConfigFail = /(missing\s+config|missing\s+setting|fail\s+500|500\s*\/\s*domain\s+error|domain\s+error)/.test(lower);
   const hasBootstrapContractSection = /bootstrap\s*\/\s*provisioning\s+contract/.test(lower);
-  const hasBootstrapProof = /(data\s+migration\s+required|seed\s+required|bootstrap\s+required|alembic\s+revision|onehammerstore\/alembic\/versions|existing\s+provisioning\s+proof|existing\s+key\s+proof|provisioning\s+proof)/.test(lower);
+  const hasBootstrapProof = /(data\s+migration\s+required|seed\s+required|bootstrap\s+required|migration\s+(artifact|path|file|revision)|existing\s+provisioning\s+proof|existing\s+key\s+proof|provisioning\s+proof|repo[- ]native\s+migration|project[- ]specific\s+migration)/.test(lower);
 
   if (hasRuntimeSettingsSource && expectsRuntime200 && mentionsMissingConfigFail && !hasBootstrapContractSection) {
     return "runtime DB settings source-of-truth with expected 200 behavior must include a 'Bootstrap / Provisioning Contract' section.";
   }
 
   if (hasRuntimeSettingsSource && expectsRuntime200 && !hasBootstrapProof) {
-    return "runtime DB settings source-of-truth with expected 200/payload requires explicit bootstrap proof (idempotent Alembic data migration under onehammerStore/alembic/versions or existing provisioning proof).";
+    return "runtime DB settings source-of-truth with expected 200/payload requires explicit bootstrap proof (repo-native idempotent migration/provisioning artifact at the path required by active repo/project instructions, or existing provisioning proof).";
   }
 
   return null;
@@ -906,9 +1030,6 @@ function isCompletedStatus(entry, opts = {}) {
   return opts.allowPassed === true && entry.status === "passed";
 }
 
-function escapeRe(s) {
-  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 function detectCycles(stdout) {
   // Try JSON parse first. bv --robot-* emits JSON; after jq the root may be an array.

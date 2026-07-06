@@ -22,7 +22,7 @@ metadata:
   version: '1.0'
   position: 7.5
   chain: planning -> planning-validator -> orchestrator
-  ecosystem: one_hammer
+  ecosystem: repo-agnostic
   dependencies:
     - id: beads-cli
       kind: command
@@ -62,9 +62,9 @@ This split keeps default Phase 7 cheap while preserving a deeper gate for cases 
 
 Caller passes:
 
-- `feature` — feature slug (matches `history/<feature>/...`)
+- `feature` — feature slug (matches target-repo-scoped `history/<feature>/...`)
 - `current_phase` — integer (e.g. `2`)
-- `state_file` — `.planning/state/planning-state-v2.json`
+- `state_file` — `.planning/state/planning-state-v2.json` (single authoritative planning status/state file; no Markdown mirror is consulted)
 - `semantic_lite_summary` — compact result from graph + deterministic checks
 - `validation_reason` — why deep validation is needed (`explicit_full`, `explicit_deep`, `targeted_ambiguous_risk`, `unresolved_high_risk`, or `handoff_deep_accepted`)
 
@@ -76,6 +76,10 @@ Validator returns:
 - `needs_spike` — optional yes/no spike recommendation when high risk remains unresolved
 
 Caller writes the payload back into `phase_outputs."7"` of the state file. Validator does NOT mutate state itself.
+
+History-root rule: read the authoritative state from `CONTROL_ROOT`, then set `HISTORY_ROOT = phase_outputs."0".project_index_root` when that target repo is present; otherwise fall back to the normal project/control root. Resolve every relative `history/...` validation input under `HISTORY_ROOT`, never blindly under cwd/`CLAUDE_PROJECT_DIR`.
+
+Phase 0 background-index evidence rule: when validation needs job evidence, read only `phase_outputs."0".project_index_jobs[project_index_job_id]` from the same authoritative JSON state. Never read or require `.planning/index-jobs/<job-id>/` metadata files. A valid completed background job is same-target, `status="succeeded"`, numeric `exit_code=0`, and collected (`collected_at`), with `project_index_waited=true`.
 
 ### Invoked standalone ("/validate plan full" / "validate plan deep")
 
@@ -96,7 +100,7 @@ Default Phase 7 must NOT invoke this full validator. Phase 7 must first run dete
 - requirements coverage (`R1`/`R2`/... requirements appear in contract, story, or bead coverage)
 - DB settings source-of-truth has bootstrap/provisioning/migration proof
 - runtime-critical config keys are not paired with "no migration expected"
-- BE/runtime beads require a migration/provisioning decision clause before new Alembic files are created
+- BE/runtime beads require a migration/provisioning decision clause before new repo-native migration/provisioning artifacts are created
 - legacy endpoint retirement is explicit when required, including 404/410/no-side-effect behavior
 - canonical API endpoint/schema naming is consistent across contract, tests, and beads
 - every bead has concrete FE/BE verification clauses, completion close-gate evidence requirements, and test budget
@@ -120,7 +124,7 @@ This skill is **deep-mode only**.
 
 ## Prerequisites
 
-These must exist before validation starts:
+These must exist before validation starts. All paths below are relative to `HISTORY_ROOT` (selected target repo; fallback normal project root only when no target is selected):
 
 - `history/<feature>/CONTEXT.md` (or `requirements.md` — both acceptable)
 - `history/<feature>/discovery.md` (10 section schema — see `references/structural-checklist.md`)
@@ -132,12 +136,12 @@ These must exist before validation starts:
 
 If any are missing → verdict `BLOCKED` with `reasons: ["missing artifact: <path>"]`. Return to caller.
 
-## Fullstack Rule (one_hammer specific)
+## Cross-Surface Contract Rule
 
-`onehammerStore` is the contract source of truth. When reviewing dimensions that touch both sides:
+Do not assume fixed backend/frontend repositories, directory names, or framework boundaries. Read the active repo/project instructions and discovered topology first. When reviewing work that crosses components or repositories:
 
-- backend contract changes must be verified BEFORE frontend work is accepted
-- a story that touches `onehammerUI` but has no matching backend contract (either in a prior phase or this phase) is a FAIL on Dimension 8 (Exit-State) unless explicitly documented as pure-frontend
+- identify the contract provider/source of truth and verify its contract change BEFORE accepting dependent consumer work
+- a consumer-side story (UI, client, worker, service, or another repo) with no matching provider contract owner in a prior or current phase is a FAIL on Dimension 8 (Exit-State), unless the work is explicitly documented as single-surface and independent of such a contract
 
 ---
 
@@ -186,7 +190,7 @@ artifacts:
 2. **Story coverage and ordering** — each story has job + why-now + done-looks-like; Story 1 has a reason to be first
 3. **Decision coverage** — locked decisions from `CONTEXT.md`/`approach.md` map to stories and beads
 4. **Dependency correctness** — bead graph acyclic, story order matches bead dependency order, no missing refs
-5. **File scope isolation** — no two ready beads write the same file without explicit sequencing; `onehammerStore` vs `onehammerUI` split respected
+5. **File scope isolation** — no two ready beads write the same file without explicit sequencing; actual component/repository scopes from the discovered topology are respected
 6. **Context budget** — every bead fits in one worker context (no multi-layer omnibus beads)
 7. **Verification completeness** — every story has `done looks like`, every bead has runnable `verify:` and an explicit test budget
 8. **Exit-state completeness and risk alignment** — if all beads close, the phase exit state holds, and HIGH-risk items either have explicit deferrals or spike recommendations
@@ -422,7 +426,7 @@ Caller (`planning` Phase 7) writes this into `phase_outputs."7"`:
 }
 ```
 
-Use `READY` only when deep-mode pass has no unresolved patch list, CRITICAL flags, or spike recommendation. `BLOCKED` and `NEEDS-REVISION` must not advance to Phase 8.
+Use `READY` only when deep-mode pass has no unresolved patch list, CRITICAL flags, or spike recommendation. `BLOCKED` and `NEEDS-REVISION` must not complete the terminal Phase 7 planning gate.
 
 ---
 
@@ -446,7 +450,7 @@ Use `READY` only when deep-mode pass has no unresolved patch list, CRITICAL flag
 - running a second plan-checker Agent pass without explicit user request
 - creating spike beads or spawning spike Agents during validation without explicit user approval
 - running fresh-eyes Agent automatically merely because deep/full validation is active
-- fullstack feature with frontend beads but no backend contract trail
+- cross-surface feature with consumer beads but no provider contract trail
 - a bead whose `verify:` field is "make sure it works"
 - a bead missing an explicit test budget
 

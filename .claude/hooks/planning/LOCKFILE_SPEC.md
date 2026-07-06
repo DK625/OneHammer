@@ -4,7 +4,7 @@
 
 ## Problem
 
-`.planning/state/planning-state-v2.json` is a single shared file. Per `AGENTS.md`, multiple coding agents may work on the same repository concurrently (MCP Agent Mail + Beads workflow explicitly assumes this). Two concurrent writers can clobber each other's transitions (e.g., Phase 2 → 2.5 overwritten by a parallel Phase 1 agent).
+`.planning/state/planning-state-v2.json` is a single shared file. Multiple workflow actors may work in the same repository concurrently, so two state writers can clobber each other's transitions (for example, Phase 2 → 2.5 overwritten by another state update). Phase 1 lane agents are explicitly not state writers: they write only their own canonical lane Markdown files; the main agent owns state recording/verification.
 
 ## Lockfile Design
 

@@ -32,7 +32,7 @@ Does this phase still make sense in `phase-plan.md`?
 - YES if later phases can still build on this phase's exit state
 - NO if the phase boundary moved during decomposition and later phases are now blocked or duplicated
 
-### Q5. Fullstack contract integrity (one_hammer specific)
+### Q5. Cross-surface contract integrity
 
 Backend contract changes (if any) come from either:
 

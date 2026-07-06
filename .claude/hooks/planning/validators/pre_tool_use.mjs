@@ -5,6 +5,7 @@
 import { preToolUseDeny, debug } from "../lib/diagnostics.mjs";
 import {
   readState, isPlanningActive, phaseOutput, featurePath, fileExists, isLightweightMode, completedIncludes,
+  resolvePlanningPath, historyRoot, featureWorkspacePath,
 } from "../lib/state.mjs";
 import { readFileSafe } from "../lib/artifacts.mjs";
 
@@ -21,71 +22,27 @@ const PHASE_16_TOTAL_QUESTIONS = 8;
 const PHASE_15_PO_GUIDANCE = `Phase 1.5 must keep the normal contract of exactly ${PHASE_15_TOTAL_QUESTIONS} business-scope questions in ${PHASE_15_TOTAL_QUESTIONS / QUESTIONS_PER_ROUND} rounds of ${QUESTIONS_PER_ROUND} questions per AskUserQuestion call. Ask like a Product Owner: each question targets a load-bearing business-logic decision (scope cut, priority trade-off, success criterion, edge-case rule, ownership, rollout). No filler, no scattered probes. Every question needs >=${MIN_OPTIONS_PER_QUESTION} concrete options so the user picks instead of free-typing. Round 2/3 must avoid duplicate intent unless a clear followup_reason is provided. If unresolved anomaly exists, include at least one direct anomaly-resolution question in the next round. Optional Round 4 (questions ${PHASE_15_TOTAL_QUESTIONS + 1}-${PHASE_15_OPTIONAL_ROUND_TOTAL_QUESTIONS}) is allowed only for unresolved anomaly resolution and must not contain broad new discovery questions.`;
 const PHASE_16_TEST_GUIDANCE = `Phase 1.6 must collect exactly ${PHASE_16_TOTAL_QUESTIONS} test-clarification questions in ${PHASE_16_TOTAL_QUESTIONS / QUESTIONS_PER_ROUND} rounds of ${QUESTIONS_PER_ROUND} questions per AskUserQuestion call. Ask only high-signal test questions (feature mode: fullstack/fe-only/be-only, critical acceptance path, failure paths, evidence requirement, FE screenshot checkpoint selection for FE-involving modes, environment/seed data, rollout verification, ownership of final sign-off). No filler. Every question needs >=${MIN_OPTIONS_PER_QUESTION} concrete options. Update phase_outputs."1.6".questions_asked after each round and only advance to Phase 2 once questions_asked === ${PHASE_16_TOTAL_QUESTIONS} and test-scenarios.md is written.`;
 import { currentPhaseAtLeast } from "../lib/phase_gates.mjs";
+import {
+  DISCOVERY_CONTRACT_BEGIN, DISCOVERY_LANES, REQUIRED_DISCOVERY_SUBAGENT,
+  classifyDiscoveryLaneLedger, discoveryLaneFromToolInput,
+  isRetryableDiscoveryLaneStatus, validateDiscoveryAgentPromptContract,
+} from "../lib/discovery_agent_contract.mjs";
 
-const PHASE7_READY_VERDICTS = new Set(["READY", "READY_LITE", "READY_TARGETED"]);
-const PHASE7_VALIDATION_MODES = new Set(["mechanical_lite", "targeted", "full"]);
-import { looksLikeExecutionPlanFile } from "../lib/artifacts.mjs";
 import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 // Regex for the "bv" CLI (beads viewer) — the bare form launches an interactive TUI.
-const ALLOWED_BV_FLAGS = /(--robot-|--export-graph|--help|-h\b|-V\b|--version)/;
+const ALLOWED_BV_FLAGS = /(--robot-(?!plan\b)[A-Za-z0-9-]+|--export-graph|--help|-h\b|-V\b|--version)/;
 
-// Rough heuristic: an Agent call whose prompt looks like it is spawning one of the
-// Phase 1 discovery agents. Used to block malformed discovery Agent calls before they spawn.
+// Discovery Agent calls use a versioned canonical prompt block. We still keep a
+// broad heuristic to catch malformed discovery-like calls before they spawn.
 const DISCOVERY_AGENT_KEYWORDS = /(discovery|architecture discovery|pattern discovery|constraint discovery|external discovery|discover\s+the\s+codebase)/i;
-const DISCOVERY_LANES = [
-  { id: "architecture", label: "Architecture", artifact: "history/{feature}/discovery-lanes/1-architecture.md", re: /architecture/i },
-  { id: "patterns", label: "Patterns", artifact: "history/{feature}/discovery-lanes/2-patterns.md", re: /patterns?/i },
-  { id: "constraints", label: "Constraints", artifact: "history/{feature}/discovery-lanes/3-constraints.md", re: /constraints?/i },
-  { id: "external", label: "External", artifact: "history/{feature}/discovery-lanes/4-external.md", re: /external/i },
-];
-const ALLOWED_DISCOVERY_SUBAGENTS = new Set(["Explore", "general-purpose"]);
-const PHASE_1_AGENT_DENY_GUIDANCE = `IMPORTANT: Do not launch this Agent call. Phase 1 discovery baseline is simple: launch each canonical lane once (Architecture, Patterns, Constraints, External), then wait for outputs/artifacts. Discovery subagents must author artifact-ready Markdown in their response only; the main agent writes canonical lane files, compiles discovery.md, updates PLANNING_STATUS.md, and manages JSON state. After outputs are observable, prime only lanes that are still missing or retryable failed. Use subagent_type="Explore" or "general-purpose", and keep run_in_background=true so all lanes can finish before Phase 1.5.`;
+const PHASE_1_AGENT_DENY_GUIDANCE = `IMPORTANT: Do not launch this malformed Agent call. Use the exact ${DISCOVERY_CONTRACT_BEGIN} block from .claude/skills/planning/agents/launch-discovery-agents.md, substitute the actual feature and canonical lane artifact, and launch only missing/failed/orphaned lanes as subagent_type="general-purpose" with run_in_background=true. Do not pre-mark a lane running. Record status="running" only after the Agent launch is accepted and state has a verified agent_id/launch_id (or attempt_id plus launch_confirmed_at). A running lane without launch identity is orphaned/retryable, not a duplicate lock. Each lane agent writes only its own canonical file; the main agent reads/verifies lane files, compiles discovery.md, and manages JSON state.`;
 
 const RESUME_BLOCKED_TOOL_NAMES = new Set([
   "AskUserQuestion",
   "Agent",
 ]);
-
-function isPhase8Completed(state) {
-  if (!state) return false;
-  if (completedIncludes(state, "8")) return true;
-  const p8 = phaseOutput(state, "8") || {};
-  return p8.status === "completed";
-}
-
-function phase7ExecutionGateIssue(state) {
-  const p7 = phaseOutput(state, "7") || {};
-  const mode = String(p7.validation_mode ?? "");
-  const verdict = String(p7.semantic_verdict ?? "");
-  const validatorId = p7.validator_invocation_id;
-  const cyclesFound = Number(p7.cycles_found);
-
-  if (p7.status !== "completed") {
-    return "phase_outputs.7.status must be \"completed\" before Phase 8.";
-  }
-  if (!PHASE7_VALIDATION_MODES.has(mode)) {
-    return `phase_outputs.7.validation_mode must be one of ${Array.from(PHASE7_VALIDATION_MODES).join("/")}.`;
-  }
-  if (!Number.isFinite(cyclesFound) || cyclesFound !== 0) {
-    return `phase_outputs.7.cycles_found must be 0 before Phase 8 (current: ${p7.cycles_found ?? "missing"}).`;
-  }
-  if (!PHASE7_READY_VERDICTS.has(verdict)) {
-    return `phase_outputs.7.semantic_verdict must be one of ${Array.from(PHASE7_READY_VERDICTS).join("/")} before Phase 8 (current: ${p7.semantic_verdict ?? "missing"}).`;
-  }
-  if (mode === "full") {
-    if (typeof validatorId !== "string" || validatorId.trim().length === 0) {
-      return "phase_outputs.7.validator_invocation_id is required for validation_mode=full.";
-    }
-  } else if (validatorId != null) {
-    return `phase_outputs.7.validator_invocation_id must be null for validation_mode=${mode}.`;
-  }
-  if (!completedIncludes(state, "7")) {
-    return "completed_phases must include \"7\" before entering Phase 8.";
-  }
-  return null;
-}
 
 export async function validatePreToolUse(input, projectDir) {
   const toolName = input.tool_name;
@@ -100,7 +57,7 @@ export async function validatePreToolUse(input, projectDir) {
       if (!ALLOWED_BV_FLAGS.test(stripped)) {
         return preToolUseDeny(
           "Bare `bv` launches an interactive TUI that blocks the session. " +
-          "Use `bv --robot-triage` / `bv --robot-insights` / `bv --robot-plan` / `bv --export-graph` / `bv --help` instead.",
+          "Use `bv --robot-triage` / `bv --robot-insights` / `bv --robot-suggest` / `bv --robot-priority` / `bv --export-graph` / `bv --help` instead.",
         );
       }
     }
@@ -129,8 +86,11 @@ export async function validatePreToolUse(input, projectDir) {
   });
   if (resumeGateIssue) return preToolUseDeny(resumeGateIssue);
 
-  // 2. Phase 8 gate: writing execution-plan.md requires Phase 7 semantic_verdict in READY-ready verdicts.
-  //    This applies regardless of lightweight mode — Phase 7 is ALWAYS enforced.
+  // 2. Target-repo-scope active feature history writes.
+  const historyWriteIssue = validateHistoryWriteTarget(toolName, toolInput, projectDir, state);
+  if (historyWriteIssue) return preToolUseDeny(historyWriteIssue);
+
+  // 3. Enforce canonical phase artifact directories.
   if (toolName === "Write" || toolName === "Edit" || toolName === "MultiEdit") {
     const fp =
       typeof toolInput.file_path === "string" ? toolInput.file_path :
@@ -141,19 +101,6 @@ export async function validatePreToolUse(input, projectDir) {
         `Write contracts to history/<feature>/contracts/phase-<n>-contract.md and story maps to history/<feature>/story-maps/phase-<n>-story-map.md.`,
       );
     }
-    const targetingPlanningState = typeof fp === "string" && /(^|\/)\.planning\/state\/planning-state-v2\.json$/.test(fp);
-    const targetingExecPlan =
-      looksLikeExecutionPlanFile(fp) ||
-      (String(state.current_phase ?? "") === "8" && !targetingPlanningState);
-    if (targetingExecPlan) {
-      const gateIssue = phase7ExecutionGateIssue(state);
-      if (gateIssue) {
-        return preToolUseDeny(
-          `Phase 8 state gate blocked: ${gateIssue} ` +
-          `Before setting current_phase=8 or writing execution-plan.md, complete Phase 7 atomically (status, validation_mode, cycles_found=0, READY* verdict, validator id policy, completed_phases includes "7").`,
-        );
-      }
-    }
   }
 
   // 3. Block `br create` at phase >= 5 when phase_plan_approved is false.
@@ -162,18 +109,6 @@ export async function validatePreToolUse(input, projectDir) {
     const cmd = typeof toolInput.command === "string" ? toolInput.command.trim() : "";
     const stripped = cmd.replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)+/, "").trim();
     if (/^br\s+create\b/.test(stripped)) {
-      // Phase 8 gate also applies to `br create`: don't create beads for phase 8
-      // before the validator verdict lands.
-      if (String(state.current_phase ?? "") === "8") {
-        const gateIssue = phase7ExecutionGateIssue(state);
-        if (gateIssue) {
-          return preToolUseDeny(
-            `br create blocked at Phase 8: ${gateIssue} ` +
-            `Complete Phase 7 atomic state fields before creating Phase 8 beads.`,
-          );
-        }
-      }
-
       if (!lightweight && currentPhaseAtLeast(state, "5") && state.phase_plan_approved !== true) {
         return preToolUseDeny(
           `br create blocked: Phase 2.5 phase plan not yet approved. ` +
@@ -229,17 +164,11 @@ export async function validatePreToolUse(input, projectDir) {
   }
 
   // 4. Block malformed or duplicate discovery Agent calls before they spawn.
-  //    Once Phase 8 is completed, Agent spawning is unrestricted.
   if (toolName === "Agent") {
     const cp = String(state.current_phase ?? "");
-    const phase8Completed = isPhase8Completed(state);
-    if (phase8Completed) {
-      return null;
-    }
-
-    const desc = (toolInput.name ?? "") + "\n" + (toolInput.description ?? "");
-    const lane = discoveryLaneFromText(desc);
-    const looksDiscovery = lane || DISCOVERY_AGENT_KEYWORDS.test(desc);
+    const agentText = [toolInput.name, toolInput.description, toolInput.prompt].filter(Boolean).join("\n");
+    const lane = discoveryLaneFromToolInput(toolInput);
+    const looksDiscovery = lane || DISCOVERY_AGENT_KEYWORDS.test(agentText) || agentText.includes(DISCOVERY_CONTRACT_BEGIN);
     if (cp !== "1") {
       if (looksDiscovery) {
         return preToolUseDeny(
@@ -252,9 +181,9 @@ export async function validatePreToolUse(input, projectDir) {
       if (!lane) {
         issues.push("Agent prompt/description/name must identify exactly one discovery lane: Architecture, Patterns, Constraints, or External");
       }
-      const subagentType = toolInput.subagent_type ?? "general-purpose";
-      if (!ALLOWED_DISCOVERY_SUBAGENTS.has(subagentType)) {
-        issues.push(`subagent_type must be "Explore" or "general-purpose" (got ${toolInput.subagent_type ?? "missing"})`);
+      const subagentType = toolInput.subagent_type ?? "";
+      if (subagentType !== REQUIRED_DISCOVERY_SUBAGENT) {
+        issues.push(`subagent_type must be "general-purpose" for every discovery lane (got ${toolInput.subagent_type ?? "missing"})`);
       }
       if (toolInput.run_in_background !== true) {
         issues.push("run_in_background must be true");
@@ -262,8 +191,8 @@ export async function validatePreToolUse(input, projectDir) {
       issues.push(...validateDiscoveryAgentPromptContract(toolInput, lane, state.feature));
       if (lane) {
         const existing = await discoveryLaneStatus(projectDir, state, lane.id);
-        if (existing && existing !== "failed" && existing !== "missing") {
-          issues.push(`${lane.label} discovery is already ${existing}; launch only missing or retryable failed lanes`);
+        if (!isRetryableDiscoveryLaneStatus(existing)) {
+          issues.push(`${lane.label} discovery is already ${existing}; launch only missing, failed, or orphaned lanes`);
         }
       }
       if (issues.length > 0) {
@@ -272,19 +201,17 @@ export async function validatePreToolUse(input, projectDir) {
     }
   }
 
-  // 5. AskUserQuestion — allow Phase 0 GitNexus reindex, Phase 1.5 business clarification,
-  //    Phase 1.6 test clarification, Phase 2.5 approval, Phase 4 approval, and Phase 8 execution.
+  // 5. AskUserQuestion — Phase 0 indexes automatically with no question. Allow only
+  //    Phase 1.5 business clarification, Phase 1.6 test clarification, Phase 2.5 approval,
+  //    and Phase 4 approval.
   if (toolName === "AskUserQuestion") {
     const cp = String(state.current_phase ?? "");
 
-    // Phase 8 completed: planning cycle done — unrestrict (mirrors Agent gate above).
-    if (isPhase8Completed(state)) return null;
-
-    const allowedPhases = new Set(["0", "1.5", "1.6", "2.5", "4", "8"]);
+    const allowedPhases = new Set(["1.5", "1.6", "2.5", "4"]);
     if (!allowedPhases.has(cp)) {
       return preToolUseDeny(
         `AskUserQuestion blocked: planning is in phase '${cp}'. ` +
-        `GitNexus reindex questions belong in Phase 0, business questions belong in Phase 1.5, test clarification belongs in Phase 1.6, phase-plan approval belongs in Phase 2.5, and story-map approval belongs in Phase 4.`,
+        `Phase 0 project indexing is automatic and must not ask the user; business questions belong in Phase 1.5, test clarification belongs in Phase 1.6, phase-plan approval belongs in Phase 2.5, and story-map approval belongs in Phase 4.`,
       );
     }
 
@@ -292,7 +219,7 @@ export async function validatePreToolUse(input, projectDir) {
       if (!completedIncludes(state, "1")) {
         return preToolUseDeny(
           `Phase 1.5 AskUserQuestion blocked: Phase 1 discovery is not completed. ` +
-          `Collect all four discovery lane outputs, write discovery artifacts, then advance to Phase 1.5.`,
+          `Wait for all four lane agents to write their canonical discovery files, verify/read those files, compile discovery.md, then advance to Phase 1.5.`,
         );
       }
       const shapeIssue = validateQuestionRoundShape(toolInput, "Phase 1.5", PHASE_15_PO_GUIDANCE);
@@ -379,12 +306,6 @@ export async function validatePreToolUse(input, projectDir) {
       }
     }
 
-    if (cp === "0" && !looksLikeGitNexusReindexQuestion(toolInput)) {
-      return preToolUseDeny(
-        `Phase 0 AskUserQuestion must use the exact machine-checkable GitNexus reindex shape: ` +
-        `header 'GitNexus Reindex', question 'The current GitNexus index may be stale or inaccurate. Reindex GitNexus now before planning discovery?' with options Yes and No.`,
-      );
-    }
 
     if (cp === "2.5" && !looksLikeExactApprovalQuestion(toolInput)) {
       return preToolUseDeny(
@@ -460,6 +381,52 @@ function parseBrCloseCommand(command) {
   return { ids, reason: reason.trim() };
 }
 
+function pathInside(base, candidate) {
+  const rel = relative(base, candidate);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+function validateHistoryWriteTarget(toolName, toolInput, projectDir, state) {
+  if (!["Write", "Edit", "MultiEdit"].includes(toolName)) return null;
+  const fp =
+    typeof toolInput.file_path === "string" ? toolInput.file_path :
+    typeof toolInput.path === "string" ? toolInput.path : null;
+  if (!fp || !state?.feature) return null;
+
+  const feature = String(state.feature).trim();
+  if (!feature) return null;
+  const normalized = String(fp).replace(/\\/g, "/").replace(/^\.\/+/, "");
+  const relPrefix = `history/${feature}`;
+  const isActiveRelativeHistory =
+    !isAbsolute(fp) && (normalized === relPrefix || normalized.startsWith(`${relPrefix}/`));
+
+  const expectedWorkspace = featureWorkspacePath(projectDir, state);
+  if (!expectedWorkspace) return null;
+  const selectedHistoryRoot = historyRoot(state, projectDir);
+  const controlRoot = resolve(projectDir);
+
+  if (isActiveRelativeHistory && selectedHistoryRoot !== controlRoot) {
+    const intended = resolvePlanningPath(projectDir, state, fp);
+    return `Target-repo-scoped history write blocked: relative path '${fp}' would be applied from CONTROL_ROOT ${controlRoot}, ` +
+      `but the selected target repo scopes history to ${selectedHistoryRoot}. Use the target-repo path '${intended}'.`;
+  }
+
+  if (isAbsolute(fp)) {
+    const actual = resolve(fp);
+    const controlWorkspace = resolve(controlRoot, "history", feature);
+    const looksLikeWrongControlWorkspace =
+      selectedHistoryRoot !== controlRoot &&
+      pathInside(controlWorkspace, actual) &&
+      !pathInside(expectedWorkspace, actual);
+    if (looksLikeWrongControlWorkspace) {
+      return `Target-repo-scoped history write blocked: '${actual}' is under CONTROL_ROOT history, ` +
+        `but active feature history belongs under '${expectedWorkspace}'.`;
+    }
+  }
+
+  return null;
+}
+
 function splitShellWords(command) {
   const matches = String(command || "").match(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\S+/g) || [];
   return matches.map((token) => {
@@ -495,10 +462,13 @@ function beadIdMatches(left, right) {
 }
 
 function beadIdSuffix(value) {
-  return String(value || "").trim().replace(/^(br|one_hammer)-/, "");
+  const text = String(value || "").trim();
+  if (/^br-/i.test(text)) return text.slice(3);
+  const canonicalSuffix = text.match(/-([a-z0-9]+)$/i);
+  return canonicalSuffix ? canonicalSuffix[1] : text;
 }
 
-function validateCloseEvidenceForBead(id, beadText, evidenceText) {
+export function validateCloseEvidenceForBead(id, beadText, evidenceText) {
   const bead = String(beadText || "").toLowerCase();
   const evidence = String(evidenceText || "").toLowerCase();
   const looksImplementation = /(runtime conventions source|technical contract clause|test session budget|be verification clause|fe verification clause|fullstack|be-only|fe-only)/.test(bead);
@@ -508,8 +478,8 @@ function validateCloseEvidenceForBead(id, beadText, evidenceText) {
   const requiresBe = /(be verification clause|real api-call|api[ -]?call|\bcurl\b|\/api\/)/.test(bead);
   const feEvidenceWaived = /(fe\s+(evidence|screenshot|verification)\s*[:=-]?\s*(n\/a|not applicable)|browser\s+evidence\s*[:=-]?\s*(n\/a|not applicable)|evidence-scope\s+mismatch|follow-?up\s+(fe|frontend|ui|browser)|fe\s+follow-?up|be-only|backend-only|api-only|db-only|no\s+fe\s+(surface|changes|evidence))/i.test(evidence);
   const requiresFe = /(fe verification clause|agent-browser)/.test(bead) && !feEvidenceWaived;
-  const requiresDbQuery = /(then query|db query proof|query orders|orders metadata|metadata proof|database query)/.test(bead);
-  const migrationRelevant = /(migration-relevant|migration required|data migration required|seed required|bootstrap required|alembic|onehammerstore\/alembic\/versions|schema)/.test(bead);
+  const requiresDbQuery = /(then query|db query proof|database query|sql proof|query result|row proof|record proof|metadata proof)/.test(bead);
+  const migrationRelevant = /(migration-relevant|migration required|data migration required|seed required|bootstrap required|schema migration|migration tool|alembic|prisma|flyway|liquibase|django migrate|rails db:migrate|knex|sequelize|goose)/.test(bead);
   const requiresBrowserNetworkCue = requiresFe && /(integration|fe.?be|network|api cue|\/api\/|endpoint|legacy|retired|cleanup|create path|order)/.test(bead);
   const requiresQualityGate = requiresFe && /(quality gate|typecheck|typescript|tsc|lint|build)/.test(bead);
   const pngMatches = evidence.match(/[\w./-]+\.png\b/g) || [];
@@ -538,7 +508,7 @@ function validateCloseEvidenceForBead(id, beadText, evidenceText) {
     if (!/(migration decision|schema migration|data migration|seed migration|provisioning proof|existing provisioning|existing migration|no new migration|no migration required|alembic)/.test(evidence)) {
       missing.push("explicit migration/provisioning decision");
     }
-    if (!/(alembic upgrade head|uv run --project onehammerstore alembic upgrade head|migration applied|already at head|existing provisioning proof|no migration required|schema already exists)/.test(evidence)) {
+    if (!/(migration apply|migration command|migrations? applied|already at head|already current|existing provisioning proof|no migration required|schema already exists|alembic\s+upgrade|prisma\s+migrate\s+deploy|flyway\s+migrate|liquibase\s+update|manage\.py\s+migrate|rails\s+db:migrate|knex\s+migrate:latest|sequelize\s+db:migrate|goose\s+up)/.test(evidence)) {
       missing.push("migration apply/provisioning proof or explicit no-migration proof");
     }
   }
@@ -606,14 +576,14 @@ async function validateResumeContextRehydration({ toolName, state, projectDir })
 
   const explicitRequirementSourcePath = cleanRequirementPath(resumeContext.requirement_source_path);
   const requirementSourcePath =
-    explicitRequirementSourcePath && await fileExists(join(projectDir, explicitRequirementSourcePath))
+    explicitRequirementSourcePath && await fileExists(resolvePlanningPath(projectDir, state, explicitRequirementSourcePath))
       ? explicitRequirementSourcePath
       : await resolveRequirementSourcePath(projectDir, state);
 
   const requiredArtifacts = expectedResumeArtifacts(state);
   const missingArtifacts = [];
   for (const rel of requiredArtifacts) {
-    if (!(await fileExists(join(projectDir, rel)))) {
+    if (!(await fileExists(resolvePlanningPath(projectDir, state, rel)))) {
       missingArtifacts.push(rel);
     }
   }
@@ -624,7 +594,7 @@ async function validateResumeContextRehydration({ toolName, state, projectDir })
 
   const sourceText = requirementSourcePath
     ? `the requirement source '${requirementSourcePath}'`
-    : "the requirement source recorded in planning state/status";
+    : "the requirement source recorded in planning state";
   return `Resume blocked in Phase ${cp}: state.resume_context.required=true, so reread ${sourceText} and existing planning artifacts before continuing. After rehydration, update state to set resume_context.required=false.`;
 }
 
@@ -633,7 +603,6 @@ function expectedResumeArtifacts(state) {
   if (!feature) return [];
 
   const artifacts = [
-    `history/${feature}/PLANNING_STATUS.md`,
     `history/${feature}/discovery.md`,
     `history/${feature}/discovery-lanes/1-architecture.md`,
     `history/${feature}/discovery-lanes/2-patterns.md`,
@@ -661,18 +630,11 @@ async function resolveRequirementSourcePath(projectDir, state) {
   if (!feature) return null;
 
   const sourceFromState = extractRequirementPathFromState(state);
-  if (sourceFromState && await fileExists(join(projectDir, sourceFromState))) {
+  if (sourceFromState && await fileExists(resolvePlanningPath(projectDir, state, sourceFromState))) {
     return sourceFromState;
   }
 
-  const planningStatusPath = join(projectDir, "history", feature, "PLANNING_STATUS.md");
-  const statusText = await readFileSafe(planningStatusPath);
-  const sourceFromStatus = extractRequirementPathFromStatus(statusText);
-  if (sourceFromStatus && await fileExists(join(projectDir, sourceFromStatus))) {
-    return sourceFromStatus;
-  }
-
-  const latest = await findLatestRequirementSource(projectDir, feature);
+  const latest = await findLatestRequirementSource(projectDir, state, feature);
   if (latest) return latest;
 
   return null;
@@ -704,39 +666,6 @@ function extractRequirementPathFromState(state) {
   return null;
 }
 
-function extractRequirementPathFromStatus(statusText) {
-  if (typeof statusText !== "string" || statusText.trim().length === 0) return null;
-
-  const rows = statusText
-    .split(/\r?\n/)
-    .filter((line) => /^\|/.test(line));
-
-  for (const row of rows) {
-    const cells = row
-      .split("|")
-      .map((cell) => cell.trim())
-      .filter(Boolean);
-    if (cells.length < 2) continue;
-    const artifact = cells[0].toLowerCase();
-    if (!["source request", "requirement source", "requirements source"].includes(artifact)) {
-      continue;
-    }
-    const cleaned = cleanRequirementPath(cells[1]);
-    if (cleaned) return cleaned;
-  }
-
-  const line = statusText
-    .split(/\r?\n/)
-    .find((l) => /requirement\s*source|source\s*request/i.test(l));
-  if (!line) return null;
-
-  const normalized = line.replace(/\*\*/g, "").trim();
-  const colonIdx = normalized.indexOf(":");
-  if (colonIdx < 0) return null;
-
-  return cleanRequirementPath(normalized.slice(colonIdx + 1));
-}
-
 function cleanRequirementPath(value) {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
@@ -751,8 +680,8 @@ function cleanRequirementPath(value) {
   return cleaned;
 }
 
-async function findLatestRequirementSource(projectDir, feature) {
-  const requirementsDir = join(projectDir, "history", feature, "requirements");
+async function findLatestRequirementSource(projectDir, state, feature) {
+  const requirementsDir = resolvePlanningPath(projectDir, state, `history/${feature}/requirements`);
   if (!(await fileExists(requirementsDir))) return null;
 
   let entries;
@@ -789,52 +718,11 @@ async function findLatestRequirementSource(projectDir, feature) {
 async function discoveryLaneStatus(projectDir, state, laneId) {
   const p1 = phaseOutput(state, "1");
   const ledger = p1?.lanes?.[laneId];
-  if (ledger?.status) return String(ledger.status);
-  const lane = DISCOVERY_LANES.find((l) => l.id === laneId);
-  if (!lane || !state.feature) return "missing";
-  const rel = lane.artifact.replace("{feature}", state.feature);
-  if (await fileExists(join(projectDir, rel))) return "completed";
-  return "missing";
-}
-
-function discoveryLaneFromText(text) {
-  const matches = DISCOVERY_LANES.filter((lane) => lane.re.test(text));
-  return matches.length === 1 ? matches[0] : null;
-}
-
-function validateDiscoveryAgentPromptContract(toolInput, lane, feature) {
-  const prompt = typeof toolInput.prompt === "string" ? toolInput.prompt : "";
-  const issues = [];
-
-  if (!/\bartifact[- ]ready\b/i.test(prompt) || !/markdown/i.test(prompt)) {
-    issues.push("Agent prompt must ask the subagent to return artifact-ready Markdown for its lane");
-  }
-  if (!/\b(response|reply|return|respond|output)\b/i.test(prompt)) {
-    issues.push("Agent prompt must state that lane content is returned in the subagent response");
-  }
-  const forbidsWrites = /do\s+not\s+(?:use\s+)?(?:write|edit|persist|create|modify)[\s\S]{0,100}(?:file|artifact|repo|repository|state|history\/|\.planning|PLANNING_STATUS)/i.test(prompt);
-  if (!forbidsWrites) {
-    issues.push("Agent prompt must forbid the subagent from writing files, artifacts, or planning state");
-  }
-  const mainOwnsPersistence = /main agent[\s\S]{0,160}(?:write|persist|record|manage|update)/i.test(prompt) && /(?:canonical|lane file|discovery\.md|PLANNING_STATUS|\.planning|state)/i.test(prompt);
-  if (!mainOwnsPersistence) {
-    issues.push("Agent prompt must say the main agent writes canonical files and manages planning state");
-  }
-  if (!/backend[\s\S]{0,80}(?:first|source of truth)/i.test(prompt) || !/frontend[\s\S]{0,100}impact/i.test(prompt)) {
-    issues.push("Agent prompt must preserve the fullstack rule: backend first/source-of-truth, then frontend impact");
-  }
-  if (!/browser\s+runbook\s+candidates/i.test(prompt)) {
-    issues.push("Agent prompt must ask for Browser Runbook candidates when durable UI route/login/selector/state cues are found");
-  }
-  if (lane) {
-    const canonicalPath = lane.artifact.replace("{feature}", feature || "<feature>");
-    const canonicalFilename = canonicalPath.split("/").pop();
-    if (!prompt.includes(canonicalPath) && !prompt.includes(canonicalFilename)) {
-      issues.push(`Agent prompt must name the canonical lane artifact target (${canonicalPath})`);
-    }
-  }
-
-  return issues;
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === laneId);
+  if (!lane || !state.feature) return classifyDiscoveryLaneLedger(ledger, false);
+  const rel = `history/${state.feature}/discovery-lanes/${lane.filename}`;
+  const artifactExists = await fileExists(resolvePlanningPath(projectDir, state, rel));
+  return classifyDiscoveryLaneLedger(ledger, artifactExists);
 }
 
 function normalizeSingleQuestion(toolInput) {
@@ -851,15 +739,6 @@ function normalizeSingleQuestion(toolInput) {
   return { question, header, labels };
 }
 
-function looksLikeGitNexusReindexQuestion(toolInput) {
-  const q = normalizeSingleQuestion(toolInput);
-  if (!q) return false;
-  return q.header === "GitNexus Reindex" &&
-    q.question === "The current GitNexus index may be stale or inaccurate. Reindex GitNexus now before planning discovery?" &&
-    q.labels.length === 2 &&
-    q.labels[0] === "Yes" &&
-    q.labels[1] === "No";
-}
 
 function validateQuestionRoundShape(toolInput, phaseLabel, guidanceText) {
   const questions = Array.isArray(toolInput.questions) ? toolInput.questions : null;
@@ -1075,7 +954,7 @@ async function validateFeaturePlanCoverageForBeads(projectDir, state) {
     `Create contract+story-map for every phase declared in ${coverage.phasePlanPath} before decomposition.`;
 }
 
-function validatePhase5VerificationClauses(command, state) {
+export function validatePhase5VerificationClauses(command, state) {
   if (!currentPhaseAtLeast(state, "5")) return null;
 
   const mode = inferFeatureModeFromState(state);
@@ -1092,28 +971,28 @@ function validatePhase5VerificationClauses(command, state) {
   const hasDbSourceCue = /(\bdb\b|database|settings\s+key|source\s+of\s+truth|table|field|config)/.test(lower);
   const hasTestSessionBudget = /(test\s+session\s+budget|session\s+budget|test\s+budget)/.test(lower);
   const hasCompletionEvidenceGate = /(completion\s+evidence\s+gate|close\s+evidence|br\s+close|close\s+reason|do\s+not\s+close|closing\s+evidence)/.test(lower);
-  const hasMigrationDecisionClause = /(migration\s+decision|inspect\s+existing\s+(alembic\s+)?revisions|before\s+creating\s+.*migration|schema\s+migration|data\s*\/\s*seed\s+migration|seed\s+migration|no\s+migration\s+required|existing\s+provisioning\s+proof)/.test(lower);
+  const hasMigrationDecisionClause = /(migration\s+decision|inspect\s+existing\s+(migration|provisioning|revision|schema)\s*(history|artifacts?|files?|revisions?)?|inspect\s+existing\s+alembic\s+revisions|before\s+creating\s+.*migration|schema\s+migration|data\s*\/\s*seed\s+migration|seed\s+migration|no\s+migration\s+required|existing\s+provisioning\s+proof)/.test(lower);
   const overOneSession = /(>\s*1\s*session|more\s+than\s+1\s*session|over\s+1\s*session|multi-?session|2\+\s*sessions)/.test(lower);
   const hasFollowUpChain = /(follow-?up\s+test\s+bead|create\s+.*test\s+bead.*(after|next)|br\s+dep\s+add|depends\s+on|blocked\s+by)/.test(lower);
 
   const hasNoMigrationExpectation = /(no\s+migration\s+expected|migration\s*:\s*none|no\s+schema\s+change|schema\s*unchanged)/.test(lower);
   const hasMigrationRequiredCue = /(migration\s+(required|expected)|create\s+migration|apply\s+migration|alembic\s+revision|schema\s+change\s+required|data\s+migration\s+required|seed\s+required|bootstrap\s+required)/.test(lower);
   const hasMigrationExpectation = hasNoMigrationExpectation || hasMigrationRequiredCue;
-  const hasAlembicUpgradeCommand = /(uv\s+run\s+--project\s+onehammerstore\s+alembic\s+upgrade\s+head|alembic\s+upgrade\s+head)/.test(lower);
+  const hasMigrationApplyCommand = /(migration\s+(apply|command)|apply\s+migration|migrate\s+(up|deploy|latest)|alembic\s+upgrade(?:\s+head)?|prisma\s+migrate\s+deploy|flyway\s+migrate|liquibase\s+update|manage\.py\s+migrate|rails\s+db:migrate|knex\s+migrate:latest|sequelize\s+db:migrate|goose\s+up|repo[- ]specific\s+migration\s+command|project[- ]specific\s+migration\s+command)/.test(lower);
 
   const hasRuntimeSettingsSource = /(db\s+settings|settings\s+key|settings\s+table|source\s+of\s+truth|config\s+key)/.test(lower);
   const expectsRuntime200 = /(get\s+\/api\/|\/api\/|expected\s+200|returns?\s+200|status\s+200|payload)/.test(lower);
-  const mentionsMissingConfigFail = /(missing\s+config|missing\s+setting|fail\s+500|500\s*\/\s*domain\s+error|domain\s+error|catalog_missing)/.test(lower);
-  const hasBootstrapProof = /(data\s+migration\s+required|seed\s+required|bootstrap\s+required|alembic\s+revision|onehammerstore\/alembic\/versions|existing\s+provisioning\s+proof|existing\s+key\s+proof|provisioning\s+proof)/.test(lower);
+  const mentionsMissingConfigFail = /(missing\s+config|missing\s+setting|fail\s+500|500\s*\/\s*domain\s+error|domain\s+error)/.test(lower);
+  const hasBootstrapProof = /(data\s+migration\s+required|seed\s+required|bootstrap\s+required|migration\s+(artifact|path|file|revision)|existing\s+provisioning\s+proof|existing\s+key\s+proof|provisioning\s+proof|repo[- ]native\s+migration|project[- ]specific\s+migration)/.test(lower);
 
   const hasNoRestartExpectation = /(no\s+restart\s+expected|restart\s*:\s*not\s+needed|no\s+runtime\s+reload\s+needed)/.test(lower);
-  const hasRestartRequiredCue = /(restart\s+(required|needed)|systemctl\s+restart\s+onehammer-be|restart\s+onehammer-be|backend\s+restart)/.test(lower);
+  const hasRestartRequiredCue = /(restart\s+(required|needed)|reload\s+(required|needed)|service\s+restart|process\s+restart|backend\s+restart|runtime\s+reload)/.test(lower);
   const hasRestartExpectation = hasNoRestartExpectation || hasRestartRequiredCue;
 
   const explicitNoFe = /(fe\s+(evidence|screenshot|verification)\s*[:=-]?\s*(n\/a|not applicable)|browser\s+evidence\s*[:=-]?\s*(n\/a|not applicable)|be-only|backend-only|api-only|db-only|thuần\s*be|no\s+fe\s+(surface|changes|evidence)|frontend\s*[:=-]?\s*(n\/a|not applicable))/i.test(lower);
   const explicitNoBe = /(be\s+(evidence|verification)\s*[:=-]?\s*(n\/a|not applicable)|backend\s*[:=-]?\s*(n\/a|not applicable)|fe-only|frontend-only|ui-only|browser-only|thuần\s*fe|no\s+be\s+(surface|changes|evidence))/i.test(lower);
-  const beadHasFeSurface = !explicitNoFe && /(fe\s+verification\s+clause|agent-browser|browser\s+evidence|screenshot|frontend|onehammerui|\bui\b|react|nextjs|page|component|screen|visual|button|form|client\s+dashboard)/i.test(lower);
-  const beadHasBeSurface = !explicitNoBe && /(be\s+verification\s+clause|backend|onehammerstore|\bapi\b|\/api\/|endpoint|curl|http|\bdb\b|database|settings\s+key|settings\s+table|migration|alembic|runtime|schema|seed|provisioning)/i.test(lower);
+  const beadHasFeSurface = !explicitNoFe && /(fe\s+verification\s+clause|agent-browser|browser\s+evidence|screenshot|frontend|\bui\b|react|nextjs|page|component|screen|visual|button|form|client\s+app)/i.test(lower);
+  const beadHasBeSurface = !explicitNoBe && /(be\s+verification\s+clause|backend|service|worker|\bapi\b|\/api\/|endpoint|curl|http|\bdb\b|database|settings\s+key|settings\s+table|migration|runtime|schema|seed|provisioning)/i.test(lower);
 
   const requiresFe = mode === "fe-only" || beadHasFeSurface;
   const requiresBe = mode === "be-only" || beadHasBeSurface || (!requiresFe && mode === "unknown");
@@ -1142,7 +1021,7 @@ function validatePhase5VerificationClauses(command, state) {
 
   if (requiresBe && hasRuntimeSettingsSource && expectsRuntime200 && !hasBootstrapProof) {
     return `br create blocked: runtime DB settings source-of-truth requires bootstrap proof. ` +
-      `Add data migration/seed under onehammerStore/alembic/versions or explicit existing-key provisioning proof. ` +
+      `Add a repo-native migration/seed/provisioning artifact at the path required by active repo/project instructions, or explicit existing-key provisioning proof. ` +
       `Do not use missing-config fail-fast behavior as a substitute for provisioning.`;
   }
 
@@ -1179,14 +1058,14 @@ function validatePhase5VerificationClauses(command, state) {
       `Add explicit data migration/seed/bootstrap requirement or explicit existing provisioning proof in the bead description.`;
   }
 
-  if (requiresBe && hasMigrationRequiredCue && !hasAlembicUpgradeCommand) {
-    return `br create blocked: migration-required bead must include Alembic apply command evidence. ` +
-      `Add 'uv run --project onehammerStore alembic upgrade head' (or equivalent alembic upgrade head command) to the BE runtime checklist.`;
+  if (requiresBe && hasMigrationRequiredCue && !hasMigrationApplyCommand) {
+    return `br create blocked: migration-required bead must include the repository-appropriate migration apply command evidence. ` +
+      `Use the command declared by active repo/project instructions or runtime conventions; do not assume Alembic or a fixed project path.`;
   }
 
   if (requiresBe && !hasRestartExpectation) {
     return `br create blocked: BE/runtime clause must explicitly state backend restart expectation. ` +
-      `Add either 'no restart expected' or 'sudo systemctl restart onehammer-be' when runtime reload is needed.`;
+      `Add either 'no restart expected' or the repository-appropriate service/process restart or reload command when runtime reload is needed.`;
   }
 
   if ((requiresBe || requiresFe) && !hasCompletionEvidenceGate) {
@@ -1196,7 +1075,7 @@ function validatePhase5VerificationClauses(command, state) {
 
   if (requiresBe && !hasMigrationDecisionClause) {
     return `br create blocked: BE/runtime bead description must include a migration/provisioning decision clause. ` +
-      `Require the executor to inspect existing Alembic revisions before creating a new migration and classify the outcome as schema migration, data/seed migration, existing provisioning proof, or no migration required.`;
+      `Require the executor to inspect existing repo-native migration/provisioning history before creating a new artifact and classify the outcome as schema migration, data/seed migration, existing provisioning proof, or no migration required.`;
   }
 
   if (!hasTestSessionBudget) {
@@ -1259,7 +1138,7 @@ async function collectFeaturePlanCoverage(projectDir, state) {
     };
   }
 
-  const absPhasePlan = join(projectDir, phasePlanPath);
+  const absPhasePlan = resolvePlanningPath(projectDir, state, phasePlanPath);
   const phasePlanText = await readFileSafe(absPhasePlan);
   if (!phasePlanText) {
     return {
@@ -1282,8 +1161,8 @@ async function collectFeaturePlanCoverage(projectDir, state) {
   for (const n of phaseNumbers) {
     const contractRel = `history/${feature}/contracts/phase-${n}-contract.md`;
     const storyRel = `history/${feature}/story-maps/phase-${n}-story-map.md`;
-    if (!(await fileExists(join(projectDir, contractRel)))) missing.push(contractRel);
-    if (!(await fileExists(join(projectDir, storyRel)))) missing.push(storyRel);
+    if (!(await fileExists(resolvePlanningPath(projectDir, state, contractRel)))) missing.push(contractRel);
+    if (!(await fileExists(resolvePlanningPath(projectDir, state, storyRel)))) missing.push(storyRel);
   }
 
   return { phasePlanPath, missing, error: null };
@@ -1298,3 +1177,5 @@ function extractFeaturePlanPhaseNumbers(phasePlanText) {
   }
   return Array.from(found).sort((a, b) => Number(a) - Number(b));
 }
+
+export { validateDiscoveryAgentPromptContract } from "../lib/discovery_agent_contract.mjs";

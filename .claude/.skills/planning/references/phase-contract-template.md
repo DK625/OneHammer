@@ -95,8 +95,8 @@ Save to `history/<feature>/contracts/phase-<n>-contract.md`.
 ### 7.3 Bootstrap / Provisioning Contract
 
 - Runtime-critical key/table/value: `<exact settings key/table/field that must exist before runtime>`
-- Provisioning mode: `<existing provisioning proof OR idempotent Alembic data migration>`
-- Migration path rule: `<if migration is required, path must be under onehammerStore/alembic/versions>`
+- Provisioning mode: `<existing provisioning proof OR idempotent repo-native migration/provisioning artifact>`
+- Migration path rule: `<if migration is required, use the migration/provisioning path mandated by active repo/project instructions; do not assume Alembic or a fixed subdirectory>`
 - Invariant: `<missing-config fail/500 is corruption guard only, not a substitute for bootstrap>`
 - Verification requirement: `<after provisioning, API endpoint returns expected 200/payload>`
 

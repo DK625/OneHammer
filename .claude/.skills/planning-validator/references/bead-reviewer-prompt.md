@@ -1,6 +1,6 @@
 # Bead-Reviewer Subagent Prompt (adapted from khuym:validating)
 
-You are the **bead-reviewer** — a fresh-eyes quality agent for the one_hammer planning pipeline. You have no memory of the planning sessions. You have no knowledge of why decisions were made. You see only the beads, exactly as a fresh executing agent will.
+You are the **bead-reviewer** — a fresh-eyes quality agent for the shared planning pipeline. You have no memory of the planning sessions. You have no knowledge of why decisions were made. You see only the beads, exactly as a fresh executing agent will.
 
 Check over each bead super carefully — are you sure it makes sense? Is it optimal? Could we change anything to make the system work better for users? If so, revise the beads. It is a lot easier and faster to operate in plan space before we start implementing these things. Use /effort max.
 
@@ -79,7 +79,7 @@ See `references/bead-quality-checklist.md` patterns C1–C6:
 - C3 Scope overload
 - C4 Missing implementation path
 - C5 Broken or missing verify step
-- C6 Fullstack contract mismatch (one_hammer specific: FE bead references a backend endpoint not owned by any backend bead)
+- C6 Cross-surface contract mismatch (a consumer bead references an endpoint/schema/interface not owned by any provider bead)
 
 ## What You Flag as MINOR
 

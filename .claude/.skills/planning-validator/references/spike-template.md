@@ -27,7 +27,7 @@ history/<feature>/spike-<risk-slug>.md
 ## The question
 
 > Single yes/no question. Example:
-> "Can we call the Notion API from the onehammerStore worker without hitting the 3-req/sec rate limit when batch-importing 500 rows?"
+> "Can the active project's import worker call the external API without exceeding its documented rate limit when batch-importing 500 rows?"
 
 ## What was tried
 

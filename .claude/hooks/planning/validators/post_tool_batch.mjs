@@ -3,19 +3,15 @@
 
 import { additionalContext } from "../lib/diagnostics.mjs";
 import { readState, isPlanningActive } from "../lib/state.mjs";
-
-const DISCOVERY_LANES = [
-  { id: "architecture", label: "Architecture", artifact: "history/{feature}/discovery-lanes/1-architecture.md", re: /architecture/i },
-  { id: "patterns", label: "Patterns", artifact: "history/{feature}/discovery-lanes/2-patterns.md", re: /patterns?/i },
-  { id: "constraints", label: "Constraints", artifact: "history/{feature}/discovery-lanes/3-constraints.md", re: /constraints?/i },
-  { id: "external", label: "External", artifact: "history/{feature}/discovery-lanes/4-external.md", re: /external/i },
-];
-const ALLOWED_DISCOVERY_SUBAGENTS = new Set(["Explore", "general-purpose"]);
+import {
+  DISCOVERY_CONTRACT_BEGIN, DISCOVERY_LANES, REQUIRED_DISCOVERY_SUBAGENT,
+  discoveryLaneFromToolInput, validateDiscoveryAgentPromptContract,
+} from "../lib/discovery_agent_contract.mjs";
 
 function phase1AgentGuidance(message) {
   return additionalContext(
     "PostToolBatch",
-    `[planning-guard] ${message}\n\nCorrective action: do not ask the user to fix this manually. If this is the initial Phase 1 launch, keep or complete the four canonical discovery lanes once (Architecture, Patterns, Constraints, External). Each Agent prompt must require artifact-ready Markdown in the subagent response only, forbid file/state writes, and state that the main agent writes canonical lane files plus PLANNING_STATUS.md/JSON state. Then wait for outputs. After outputs/artifacts are observable, verify coverage and prime only lanes that are still missing or retryable failed. Do not relaunch a whole discovery batch based on partial batch coverage.`,
+    `[planning-guard] ${message}\n\nCorrective action: do not ask the user to fix this manually. Copy the exact ${DISCOVERY_CONTRACT_BEGIN} block from .claude/skills/planning/agents/launch-discovery-agents.md, substitute the actual feature/lane artifact, and launch only missing/failed/orphaned lanes as background general-purpose agents. Do not pre-mark running. Record running only after an accepted launch with a verified launch identity. Canonical lane files are the handoff; the main agent compiles discovery.md and manages JSON state.`,
   );
 }
 
@@ -39,20 +35,20 @@ export async function validatePostToolBatch(input, projectDir) {
 
   for (const call of agentCalls) {
     const i = call.tool_input || {};
-    const text = [i.name, i.description].filter(Boolean).join(" :: ");
-    const lane = discoveryLaneFromText(text);
+    const lane = discoveryLaneFromToolInput(i);
     if (!lane) {
       issues.push("one Agent call did not clearly identify exactly one lane");
     } else {
       launchedLaneIds.push(lane.id);
     }
-    const subagentType = i.subagent_type ?? "general-purpose";
-    if (!ALLOWED_DISCOVERY_SUBAGENTS.has(subagentType)) {
-      issues.push(`one Agent call used subagent_type=${i.subagent_type ?? "missing"}; allowed: Explore or general-purpose`);
+    const subagentType = i.subagent_type ?? "";
+    if (subagentType !== REQUIRED_DISCOVERY_SUBAGENT) {
+      issues.push(`one Agent call used subagent_type=${i.subagent_type ?? "missing"}; required: general-purpose`);
     }
     if (i.run_in_background !== true) {
       issues.push("one Agent call omitted run_in_background=true");
     }
+    issues.push(...validateDiscoveryAgentPromptContract(i, lane, state.feature).map((issue) => `one Agent call: ${issue}`));
   }
 
   const duplicateLaunches = launchedLaneIds.filter((id, idx) => launchedLaneIds.indexOf(id) !== idx);
@@ -68,10 +64,6 @@ export async function validatePostToolBatch(input, projectDir) {
   return phase1AgentGuidance(`Phase 1 discovery Agent batch accepted for lane(s): ${lanes.join(", ")}.`);
 }
 
-function discoveryLaneFromText(text) {
-  const matches = DISCOVERY_LANES.filter((lane) => lane.re.test(text));
-  return matches.length === 1 ? matches[0] : null;
-}
 
 function unique(values) {
   return [...new Set(values)];

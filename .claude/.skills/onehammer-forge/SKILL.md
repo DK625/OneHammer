@@ -17,7 +17,7 @@ Mandatory kickoff (strict order):
 1. Run `br ready --json` and select only from that list. If `[]`, STOP immediately; do not fall back to `bv` recommendations or existing `in_progress` beads.
 2. Lock ownership immediately: `br update <bead-id> --status=in_progress`.
 3. Run Agent Mail claim flow: register/prepare thread, announce claim intent, reserve the smallest safe file surface.
-4. Load bead-scoped context only: selected bead details, referenced history/plan/contract/story-map files, and any convention/lesson file explicitly named by the bead or plan.
+4. Load bead-scoped context only: selected bead details, referenced history/plan/contract/story-map files, and any convention/lesson file explicitly named by the bead or plan. For relative `history/...` references, resolve them under the planning target repo recorded in `phase_outputs."0".project_index_root`; fall back to the normal current project root only when no target repo is recorded.
 5. Resolve runtime conventions before implementation: if the bead/plan mentions a runtime convention, lesson, adapter, credentials source, migration checklist, or verification source, read it and extract the repo-specific runtime adapter before running migrations, restarts, login, curl/API, browser, or DB checks.
 6. After context/conventions are loaded, run targeted Serena/GitNexus discovery only.
 

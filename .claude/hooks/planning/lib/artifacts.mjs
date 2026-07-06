@@ -31,8 +31,8 @@ function escapeRe(s) {
 export const DISCOVERY_SECTIONS = [
   "Scope",
   "Architecture Findings",
-  "Backend/API Contract Changes",
-  "Frontend Impact",
+  "Contract / Interface Changes",
+  "Dependent Consumer Impact",
   "Existing Patterns To Reuse",
   "Technical Constraints",
   "External References",
@@ -106,12 +106,4 @@ export function looksLikePhasePlanFile(fp) {
 
 export function looksLikeStateFile(fp) {
   return typeof fp === "string" && /planning-state-v2\.json$/.test(fp);
-}
-
-export function looksLikeExecutionPlanFile(fp) {
-  return typeof fp === "string" && /(^|\/)execution-plan\.md$/.test(fp);
-}
-
-export function looksLikePlanningStatusFile(fp) {
-  return typeof fp === "string" && /(^|\/)PLANNING_STATUS\.md$/.test(fp);
 }

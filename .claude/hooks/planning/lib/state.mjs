@@ -13,11 +13,11 @@ import {
 import {
   writeFileSync, readFileSync, unlinkSync, statSync,
 } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, isAbsolute, resolve } from "node:path";
 import { warn, debug } from "./diagnostics.mjs";
 
 const VALID_PHASES = new Set([
-  "0", "0.5", "1", "1.5", "1.6", "2", "2.5", "3", "4", "5", "7", "8",
+  "0", "1", "1.5", "1.6", "2", "2.5", "3", "4", "5", "7",
   // Handoff sentinel
   "handoff",
 ]);
@@ -209,8 +209,41 @@ export function phaseOutput(state, phaseId) {
 
 export function featurePath(state) {
   if (!state || !state.feature) return null;
-  // Default convention per SKILL.md
+  // Default convention per SKILL.md. This remains target-repo-relative.
   return `history/${state.feature}`;
+}
+
+// Planning state stays under CONTROL_ROOT, but human planning artifacts are scoped
+// to the selected target repository when Phase 0 has recorded one. Before a target
+// is selected (or for legacy/incomplete state), preserve the historical behavior:
+// resolve history/ from the normal project/control root.
+export function historyRoot(state, projectDir) {
+  const controlRoot = resolve(projectDir);
+  const targetRoot = state?.phase_outputs?.["0"]?.project_index_root;
+  if (typeof targetRoot !== "string") return controlRoot;
+  const trimmed = targetRoot.trim();
+  if (!trimmed || !isAbsolute(trimmed)) return controlRoot;
+  return resolve(trimmed);
+}
+
+export function isHistoryScopedPath(pathValue) {
+  const raw = String(pathValue ?? "").trim();
+  if (!raw || isAbsolute(raw)) return false;
+  const normalized = raw.replace(/\\/g, "/").replace(/^\.\/+/, "");
+  return normalized === "history" || normalized.startsWith("history/");
+}
+
+export function resolvePlanningPath(projectDir, state, pathValue) {
+  const raw = String(pathValue ?? "").trim();
+  if (!raw) return null;
+  if (isAbsolute(raw)) return resolve(raw);
+  const base = isHistoryScopedPath(raw) ? historyRoot(state, projectDir) : resolve(projectDir);
+  return resolve(base, raw);
+}
+
+export function featureWorkspacePath(projectDir, state) {
+  const rel = featurePath(state);
+  return rel ? resolvePlanningPath(projectDir, state, rel) : null;
 }
 
 // ---------------------------------------------------------------------------
