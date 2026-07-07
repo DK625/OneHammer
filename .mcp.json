@@ -1,0 +1,38 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "uv",
+      "args": [
+        "tool",
+        "run",
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server",
+        "--context",
+        "claude-code",
+        "--project-from-cwd",
+        "--enable-web-dashboard",
+        "false"
+      ]
+    },
+    "mcp-agent-mail": {
+      "type": "http",
+      "url": "http://127.0.0.1:8765/mcp/",
+      "headers": {
+        "Authorization": "Bearer xxx"
+      }
+    },
+    "exa": {
+      "type": "http",
+      "url": "https://mcp.exa.ai/mcp?exaApiKey=xxx",
+      "headers": {}
+    },
+    "gitnexus": {
+      "command": "gitnexus",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}
