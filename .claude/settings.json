@@ -5,7 +5,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Grep|Glob|Bash|Read",
+        "matcher": "Grep|Glob|Read",
         "hooks": [
           {
             "type": "command",
@@ -59,6 +59,18 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/planning_guard.mjs\"",
             "timeout": 20,
             "statusMessage": "Planning guard: validate output"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/planning_guard.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Planning guard: start early index"
           }
         ]
       }
