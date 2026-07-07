@@ -9,8 +9,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"/root/.claude/hooks/gitnexus/gitnexus-hook.cjs\"",
-            "timeout": 15,
+            "command": "node \"$HOME/.claude/hooks/gitnexus/gitnexus-hook.cjs\"",
+            "timeout": 10,
             "statusMessage": "Enriching with GitNexus graph context..."
           }
         ]
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"/root/.claude/hooks/gitnexus/gitnexus-hook.cjs\"",
+            "command": "node \"$HOME/.claude/hooks/gitnexus/gitnexus-hook.cjs\"",
             "timeout": 10,
             "statusMessage": "Checking GitNexus index freshness..."
           }
