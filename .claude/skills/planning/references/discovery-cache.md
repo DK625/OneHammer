@@ -1,6 +1,6 @@
 # Feature-Scoped Discovery Setup (Phase 0 → Phase 1)
 
-Phase 0 already ensures target-repo-scoped `history/<feature>/` exists under `HISTORY_ROOT` (`phase_outputs.0.project_index_root`, fallback normal project root only when no target is selected). Resolve every relative path in this reference against `HISTORY_ROOT`. Do not delay a fresh Phase 1 launch to read broad context: after Phase 0 succeeds, spawn the four missing discovery lanes immediately. Use this reference when verifying existing lane coverage and when compiling `discovery.md` from the lane files.
+Phase 0 already ensures target-repo-scoped `history/<feature>/` exists under `HISTORY_ROOT` (`phase_outputs.0.project_index_root`, fallback normal project root only when no target is selected). Resolve every relative path in this reference against `HISTORY_ROOT`. Do not delay a fresh Phase 1 launch to read broad context: after Phase 0 succeeds, spawn the three missing subagent discovery lanes (Patterns, Constraints, External) immediately, then run the main-agent Architecture lane with GitNexus. Use this reference when verifying existing lane coverage and when compiling `discovery.md` from the lane files.
 
 ## Key Principle
 

@@ -71,10 +71,10 @@ test("discovery artifact schema is component/repo agnostic", () => {
 });
 
 test("discovery Agent prompt accepts canonical machine-checkable lane contract", () => {
-  const lane = discoveryLaneById("architecture");
+  const lane = discoveryLaneById("patterns");
   const prompt = [
-    "Perform architecture discovery and preserve detailed evidence.",
-    renderDiscoveryContractBlock("architecture", "example"),
+    "Perform patterns discovery and preserve detailed evidence.",
+    renderDiscoveryContractBlock("patterns", "example"),
     "Write the lane artifact directly; the main agent owns synthesis and state.",
   ].join("\n\n");
 
@@ -106,16 +106,16 @@ test("discovery Agent prompt rejects old response-only main-agent persistence co
 });
 
 
-test("Phase 1 launch protocol uses general-purpose for all four lane agents", async () => {
-  const text = await readFile(join(ROOT, ".claude", "skills", "planning", "agents", "launch-discovery-agents.md"), "utf8");
+test("Phase 1 launch protocol uses general-purpose for all subagent lanes", async () => {
+  const text = await readFile(join(ROOT, ".claude", "skills", "planning", "references", "launch-discovery-agents.md"), "utf8");
   const launchTypes = [...text.matchAll(/subagent_type="([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(launchTypes.length >= 4);
+  assert.ok(launchTypes.length >= 3);
   assert.deepEqual(new Set(launchTypes), new Set(["general-purpose"]));
   assert.doesNotMatch(text, /subagent_type="Explore"/);
 });
 
 test("Phase 1 launch protocol uses canonical files as handoff and has no side-channel retrieval path", async () => {
-  const text = await readFile(join(ROOT, ".claude", "skills", "planning", "agents", "launch-discovery-agents.md"), "utf8");
+  const text = await readFile(join(ROOT, ".claude", "skills", "planning", "references", "launch-discovery-agents.md"), "utf8");
   assert.match(text, /canonical(?: Markdown)? files are the handoff/i);
   assert.match(text, /full detailed, non-summary Markdown/i);
   assert.match(text, /main agent.*compiles `discovery\.md`/is);

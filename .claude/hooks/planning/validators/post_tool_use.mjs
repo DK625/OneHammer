@@ -16,7 +16,7 @@ import {
 import { readState, fileExists, isLightweightMode, resolvePlanningPath, featureWorkspacePath, historyRoot } from "../lib/state.mjs";
 import { validateRecordedIndexResolution } from "../lib/index_root_resolver.mjs";
 import {
-  DISCOVERY_CONTRACT_BEGIN, hasVerifiedDiscoveryLaunchIdentity,
+  DISCOVERY_CONTRACT_BEGIN, hasVerifiedDiscoveryLaunchIdentity, isMainAgentDiscoveryLane,
 } from "../lib/discovery_agent_contract.mjs";
 
 const REQUIRED_MCP_SERVERS = ["serena", "exa", "gitnexus"];
@@ -42,7 +42,7 @@ const DISCOVERY_LANE_PATHS = [
   { id: "constraints", label: "Constraints", rel: (feature) => `history/${feature}/discovery-lanes/3-constraints.md` },
   { id: "external", label: "External", rel: (feature) => `history/${feature}/discovery-lanes/4-external.md` },
 ];
-const PHASE_1_LAUNCH_GUIDANCE = `IMPORTANT: Phase 0 succeeded; start Phase 1 immediately. Copy the exact ${DISCOVERY_CONTRACT_BEGIN} prompt block from .claude/skills/planning/agents/launch-discovery-agents.md for each missing lane, substitute the actual feature/artifact, and launch as subagent_type="general-purpose" with run_in_background=true before broad main-agent exploration. Do not pre-mark lanes running. Record status="running" only after an accepted launch with agent_id/launch_id (or attempt_id plus launch_confirmed_at). A running lane without launch identity is orphaned/retryable. After all four canonical files exist, read/verify them, fill only specific gaps, compile discovery.md, and record completion state.`;
+const PHASE_1_LAUNCH_GUIDANCE = `IMPORTANT: Phase 0 succeeded; start Phase 1 immediately. Copy the exact ${DISCOVERY_CONTRACT_BEGIN} prompt block from .claude/skills/planning/references/launch-discovery-agents.md for each missing subagent lane (Patterns, Constraints, External), substitute the actual feature/artifact, and launch as subagent_type="general-purpose" with run_in_background=true. Then, while those run, execute the Architecture lane in the main agent itself using GitNexus tools (query/context/impact/route_map/cypher) and write history/<feature>/discovery-lanes/1-architecture.md directly — do not spawn an Architecture subagent. Do not pre-mark subagent lanes running. Record status="running" only after an accepted launch with agent_id/launch_id (or attempt_id plus launch_confirmed_at). A running lane without launch identity is orphaned/retryable. After all four canonical files exist, read/verify them, fill only specific gaps, compile discovery.md, and record completion state.`;
 
 const QUESTIONS_PER_ROUND = 4;
 const PHASE_15_TOTAL_QUESTIONS = 12;
@@ -863,6 +863,7 @@ function validatePhase1LaneLifecycle(p1) {
   const lanes = p1?.lanes;
   if (!lanes || typeof lanes !== "object") return null;
   const orphanRunning = DISCOVERY_LANE_PATHS
+    .filter((lane) => !isMainAgentDiscoveryLane(lane.id))
     .filter((lane) => String(lanes[lane.id]?.status ?? "") === "running" && !hasVerifiedDiscoveryLaunchIdentity(lanes[lane.id]))
     .map((lane) => lane.label);
   if (orphanRunning.length === 0) return null;
@@ -881,7 +882,7 @@ async function validatePhase1Artifacts(projectDir, state, p1) {
     if (!(await fileExists(resolvePlanningPath(projectDir, state, rel)))) missingLanes.push(`${lane.label} (${rel})`);
   }
   if (missingLanes.length > 0) {
-    return `Phase 1 marked completed but lane-agent-owned canonical discovery file(s) are missing: ${missingLanes.join(", ")}. Wait for/retry only the missing lane agents; do not substitute main-agent summaries.`;
+    return `Phase 1 marked completed but canonical discovery file(s) are missing: ${missingLanes.join(", ")}. For subagent lanes (Patterns, Constraints, External) wait for/retry only the missing lane agents; for the main-agent Architecture lane, produce it directly with GitNexus and write the canonical file. Do not substitute thin summaries for full lane evidence.`;
   }
 
   const agents = Array.isArray(p1.agents) ? p1.agents.filter((id) => typeof id === "string" && id.trim().length > 0) : [];
@@ -893,8 +894,8 @@ async function validatePhase1Artifacts(projectDir, state, p1) {
     if (incomplete.length > 0) {
       return `Phase 1 marked completed but phase_outputs.1.lanes has incomplete lane status for: ${incomplete.join(", ")}.`;
     }
-  } else if (new Set(agents).size < 4) {
-    return `Phase 1 marked completed but phase_outputs.1 must record either lanes.<id>.status completed/succeeded for all four lanes or at least 4 unique non-empty agent ids.`;
+  } else if (new Set(agents).size < 3) {
+    return `Phase 1 marked completed but phase_outputs.1 must record either lanes.<id>.status completed/succeeded for all four lanes or at least 3 unique non-empty agent ids (Patterns/Constraints/External subagents; Architecture is main-agent-owned and has no agent id).`;
   }
   return null;
 }

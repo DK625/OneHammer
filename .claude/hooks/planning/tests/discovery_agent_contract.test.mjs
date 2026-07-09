@@ -7,6 +7,7 @@ import test from "node:test";
 
 import {
   DISCOVERY_LANES,
+  SUBAGENT_DISCOVERY_LANES,
   classifyDiscoveryLaneLedger,
   discoveryLaneById,
   renderDiscoveryContractBlock,
@@ -68,8 +69,8 @@ function preToolInput(toolInput) {
   };
 }
 
-test("canonical contract prompts pass direct validation for all four lanes", () => {
-  for (const lane of DISCOVERY_LANES) {
+test("canonical contract prompts pass direct validation for the three subagent lanes", () => {
+  for (const lane of SUBAGENT_DISCOVERY_LANES) {
     const toolInput = canonicalAgentInput(lane);
     assert.deepEqual(
       validateDiscoveryAgentPromptContract(toolInput, lane, "feature-x"),
@@ -79,16 +80,26 @@ test("canonical contract prompts pass direct validation for all four lanes", () 
   }
 });
 
-test("copy-safe launcher documentation prompts pass guard contract for all four lanes", async () => {
+test("architecture lane contract is rejected as main-agent-owned", () => {
+  const architecture = DISCOVERY_LANES.find((lane) => lane.id === "architecture");
+  const toolInput = canonicalAgentInput(architecture);
+  const issues = validateDiscoveryAgentPromptContract(toolInput, architecture, "feature-x");
+  assert.ok(
+    issues.some((issue) => issue.includes("main-agent-owned")),
+    `expected main-agent-owned rejection, got: ${JSON.stringify(issues)}`,
+  );
+});
+
+test("copy-safe launcher documentation prompts pass guard contract for the three subagent lanes", async () => {
   const doc = await readFile(
-    join(ROOT, ".claude", "skills", "planning", "agents", "launch-discovery-agents.md"),
+    join(ROOT, ".claude", "skills", "planning", "references", "launch-discovery-agents.md"),
     "utf8",
   );
   const encodedPrompts = [...doc.matchAll(/prompt="((?:\\.|[^"\\])*)",\n  run_in_background=true/g)]
     .map((match) => match[1]);
-  assert.equal(encodedPrompts.length, 4, "expected four copy-safe Agent prompt examples");
+  assert.equal(encodedPrompts.length, 3, "expected three copy-safe Agent prompt examples (architecture is main-agent-owned)");
 
-  for (const lane of DISCOVERY_LANES) {
+  for (const lane of SUBAGENT_DISCOVERY_LANES) {
     const encoded = encodedPrompts.find((value) => value.includes(`lane=${lane.id}\\n`));
     assert.ok(encoded, `missing documented prompt for ${lane.id}`);
     const prompt = JSON.parse(`"${encoded}"`).replaceAll("<feature>", "feature-x");
@@ -102,41 +113,50 @@ test("copy-safe launcher documentation prompts pass guard contract for all four 
 });
 
 test("malformed prompt without canonical block fails", () => {
-  const lane = DISCOVERY_LANES[0];
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "patterns");
   const toolInput = {
     ...canonicalAgentInput(lane),
-    prompt: "Please do full detailed architecture discovery and write the file directly.",
+    prompt: "Please do full detailed patterns discovery and write the file directly.",
   };
   const issues = validateDiscoveryAgentPromptContract(toolInput, lane, "feature-x");
   assert.ok(issues.some((issue) => issue.includes("missing canonical")));
 });
 
 test("canonical block with wrong lane artifact fails", () => {
-  const architecture = DISCOVERY_LANES.find((lane) => lane.id === "architecture");
-  const toolInput = canonicalAgentInput(architecture);
+  const patterns = DISCOVERY_LANES.find((lane) => lane.id === "patterns");
+  const toolInput = canonicalAgentInput(patterns);
   toolInput.prompt = toolInput.prompt.replace(
-    "artifact=history/feature-x/discovery-lanes/1-architecture.md",
     "artifact=history/feature-x/discovery-lanes/2-patterns.md",
+    "artifact=history/feature-x/discovery-lanes/3-constraints.md",
   );
-  const issues = validateDiscoveryAgentPromptContract(toolInput, architecture, "feature-x");
+  const issues = validateDiscoveryAgentPromptContract(toolInput, patterns, "feature-x");
   assert.ok(issues.some((issue) => issue.includes("contract artifact must be")));
 });
 
-test("PreToolUse accepts canonical prompts for all four missing lanes", async () => {
+test("PreToolUse accepts canonical prompts for the three missing subagent lanes", async () => {
   const control = await tempControl();
   await writeState(control, {});
-  for (const lane of DISCOVERY_LANES) {
+  for (const lane of SUBAGENT_DISCOVERY_LANES) {
     const decision = await validatePreToolUse(preToolInput(canonicalAgentInput(lane)), control);
     assert.equal(decision, null, `${lane.id} should be launchable when missing`);
   }
 });
 
+test("PreToolUse denies an architecture subagent launch even when the lane is missing", async () => {
+  const control = await tempControl();
+  await writeState(control, {});
+  const architecture = DISCOVERY_LANES.find((lane) => lane.id === "architecture");
+  const decision = await validatePreToolUse(preToolInput(canonicalAgentInput(architecture)), control);
+  assert.ok(decision, "expected main-agent-owned denial");
+  assert.match(JSON.stringify(decision), /main-agent-owned/);
+});
+
 test("failed lane remains retryable", async () => {
   const control = await tempControl();
   await writeState(control, {
-    architecture: { status: "failed", error: "previous PreToolUse denial" },
+    patterns: { status: "failed", error: "previous PreToolUse denial" },
   });
-  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "architecture");
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "patterns");
   const decision = await validatePreToolUse(preToolInput(canonicalAgentInput(lane)), control);
   assert.equal(decision, null);
 });
@@ -144,9 +164,9 @@ test("failed lane remains retryable", async () => {
 test("running without launch identity is orphaned and retryable", async () => {
   const control = await tempControl();
   await writeState(control, {
-    architecture: { status: "running" },
+    patterns: { status: "running" },
   });
-  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "architecture");
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "patterns");
   const decision = await validatePreToolUse(preToolInput(canonicalAgentInput(lane)), control);
   assert.equal(decision, null);
   assert.equal(classifyDiscoveryLaneLedger({ status: "running" }, false), "orphaned");
@@ -155,9 +175,9 @@ test("running without launch identity is orphaned and retryable", async () => {
 test("running with verified agent identity is duplicate-blocked", async () => {
   const control = await tempControl();
   await writeState(control, {
-    architecture: { status: "running", agent_id: "agent-123" },
+    patterns: { status: "running", agent_id: "agent-123" },
   });
-  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "architecture");
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "patterns");
   const decision = await validatePreToolUse(preToolInput(canonicalAgentInput(lane)), control);
   assert.ok(decision, "expected duplicate denial");
   assert.match(JSON.stringify(decision), /already running/);
@@ -181,9 +201,9 @@ test("attempt identity requires launch confirmation to count as running", () => 
 test("completed ledger without canonical artifact is orphaned/retryable", async () => {
   const control = await tempControl();
   await writeState(control, {
-    architecture: { status: "completed" },
+    patterns: { status: "completed" },
   });
-  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "architecture");
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "patterns");
   const decision = await validatePreToolUse(preToolInput(canonicalAgentInput(lane)), control);
   assert.equal(decision, null);
   assert.equal(classifyDiscoveryLaneLedger({ status: "completed" }, false), "orphaned");
@@ -192,13 +212,13 @@ test("completed ledger without canonical artifact is orphaned/retryable", async 
 test("existing canonical artifact suppresses duplicate launch even with failed ledger", async () => {
   const control = await tempControl();
   await writeState(control, {
-    architecture: { status: "failed" },
+    patterns: { status: "failed" },
   });
-  const artifact = join(control, "history", "feature-x", "discovery-lanes", "1-architecture.md");
+  const artifact = join(control, "history", "feature-x", "discovery-lanes", "2-patterns.md");
   await mkdir(dirname(artifact), { recursive: true });
-  await writeFile(artifact, "# Architecture\n\nDetailed evidence\n");
+  await writeFile(artifact, "# Patterns\n\nDetailed evidence\n");
 
-  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "architecture");
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "patterns");
   const decision = await validatePreToolUse(preToolInput(canonicalAgentInput(lane)), control);
   assert.ok(decision, "existing artifact should block duplicate launch");
   assert.match(JSON.stringify(decision), /already completed/);

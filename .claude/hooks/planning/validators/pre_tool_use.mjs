@@ -24,7 +24,7 @@ const PHASE_16_TEST_GUIDANCE = `Phase 1.6 must collect exactly ${PHASE_16_TOTAL_
 import { currentPhaseAtLeast } from "../lib/phase_gates.mjs";
 import {
   DISCOVERY_CONTRACT_BEGIN, DISCOVERY_LANES, REQUIRED_DISCOVERY_SUBAGENT,
-  classifyDiscoveryLaneLedger, discoveryLaneFromToolInput,
+  classifyDiscoveryLaneLedger, discoveryLaneFromToolInput, isMainAgentDiscoveryLane,
   isRetryableDiscoveryLaneStatus, validateDiscoveryAgentPromptContract,
 } from "../lib/discovery_agent_contract.mjs";
 
@@ -37,7 +37,7 @@ const ALLOWED_BV_FLAGS = /(--robot-(?!plan\b)[A-Za-z0-9-]+|--export-graph|--help
 // Discovery Agent calls use a versioned canonical prompt block. We still keep a
 // broad heuristic to catch malformed discovery-like calls before they spawn.
 const DISCOVERY_AGENT_KEYWORDS = /(discovery|architecture discovery|pattern discovery|constraint discovery|external discovery|discover\s+the\s+codebase)/i;
-const PHASE_1_AGENT_DENY_GUIDANCE = `IMPORTANT: Do not launch this malformed Agent call. Use the exact ${DISCOVERY_CONTRACT_BEGIN} block from .claude/skills/planning/agents/launch-discovery-agents.md, substitute the actual feature and canonical lane artifact, and launch only missing/failed/orphaned lanes as subagent_type="general-purpose" with run_in_background=true. Do not pre-mark a lane running. Record status="running" only after the Agent launch is accepted and state has a verified agent_id/launch_id (or attempt_id plus launch_confirmed_at). A running lane without launch identity is orphaned/retryable, not a duplicate lock. Each lane agent writes only its own canonical file; the main agent reads/verifies lane files, compiles discovery.md, and manages JSON state.`;
+const PHASE_1_AGENT_DENY_GUIDANCE = `IMPORTANT: Do not launch this malformed Agent call. Use the exact ${DISCOVERY_CONTRACT_BEGIN} block from .claude/skills/planning/references/launch-discovery-agents.md, substitute the actual feature and canonical lane artifact, and launch only missing/failed/orphaned subagent lanes (Patterns, Constraints, External) as subagent_type="general-purpose" with run_in_background=true. The Architecture lane is main-agent-owned: produce history/<feature>/discovery-lanes/1-architecture.md directly with GitNexus tools (query/context/impact/route_map/cypher); never spawn a subagent for it. Do not pre-mark a lane running. Record status="running" only after the Agent launch is accepted and state has a verified agent_id/launch_id (or attempt_id plus launch_confirmed_at). A running lane without launch identity is orphaned/retryable, not a duplicate lock. Each lane agent writes only its own canonical file; the main agent reads/verifies lane files, compiles discovery.md, and manages JSON state.`;
 
 const RESUME_BLOCKED_TOOL_NAMES = new Set([
   "AskUserQuestion",
@@ -177,9 +177,17 @@ export async function validatePreToolUse(input, projectDir) {
         );
       }
     } else if (looksDiscovery) {
+      if (lane && isMainAgentDiscoveryLane(lane.id)) {
+        return preToolUseDeny(
+          `${lane.label} discovery Agent blocked: this lane is main-agent-owned. ` +
+          `Run it directly in the main agent with GitNexus tools (query/context/impact/route_map/cypher) and write ` +
+          `history/${state.feature || "<feature>"}/discovery-lanes/1-architecture.md yourself, then record the lane completed in state. ` +
+          `Launch subagents only for Patterns, Constraints, and External.`,
+        );
+      }
       const issues = [];
       if (!lane) {
-        issues.push("Agent prompt/description/name must identify exactly one discovery lane: Architecture, Patterns, Constraints, or External");
+        issues.push("Agent prompt/description/name must identify exactly one subagent discovery lane: Patterns, Constraints, or External (Architecture is main-agent-owned)");
       }
       const subagentType = toolInput.subagent_type ?? "";
       if (subagentType !== REQUIRED_DISCOVERY_SUBAGENT) {
@@ -219,7 +227,7 @@ export async function validatePreToolUse(input, projectDir) {
       if (!completedIncludes(state, "1")) {
         return preToolUseDeny(
           `Phase 1.5 AskUserQuestion blocked: Phase 1 discovery is not completed. ` +
-          `Wait for all four lane agents to write their canonical discovery files, verify/read those files, compile discovery.md, then advance to Phase 1.5.`,
+          `Complete the main-agent Architecture lane (GitNexus-direct) and wait for the three subagent lanes to write their canonical discovery files, verify/read all four files, compile discovery.md, then advance to Phase 1.5.`,
         );
       }
       const shapeIssue = validateQuestionRoundShape(toolInput, "Phase 1.5", PHASE_15_PO_GUIDANCE);

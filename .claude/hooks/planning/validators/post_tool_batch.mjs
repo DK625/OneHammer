@@ -11,7 +11,7 @@ import {
 function phase1AgentGuidance(message) {
   return additionalContext(
     "PostToolBatch",
-    `[planning-guard] ${message}\n\nCorrective action: do not ask the user to fix this manually. Copy the exact ${DISCOVERY_CONTRACT_BEGIN} block from .claude/skills/planning/agents/launch-discovery-agents.md, substitute the actual feature/lane artifact, and launch only missing/failed/orphaned lanes as background general-purpose agents. Do not pre-mark running. Record running only after an accepted launch with a verified launch identity. Canonical lane files are the handoff; the main agent compiles discovery.md and manages JSON state.`,
+    `[planning-guard] ${message}\n\nCorrective action: do not ask the user to fix this manually. Copy the exact ${DISCOVERY_CONTRACT_BEGIN} block from .claude/skills/planning/references/launch-discovery-agents.md, substitute the actual feature/lane artifact, and launch only missing/failed/orphaned subagent lanes (Patterns, Constraints, External) as background general-purpose agents. The Architecture lane is main-agent-owned: run GitNexus directly and write 1-architecture.md yourself instead of spawning it. Do not pre-mark running. Record running only after an accepted launch with a verified launch identity. Canonical lane files are the handoff; the main agent compiles discovery.md and manages JSON state.`,
   );
 }
 

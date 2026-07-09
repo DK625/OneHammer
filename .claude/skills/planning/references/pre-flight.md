@@ -17,7 +17,7 @@ Required order when `/planning` starts:
 4. While indexing runs, perform only bounded tool/dependency health checks, target-scoped workspace setup, and minimal authoritative-state evidence work.
 5. Before Phase 0 completes, call `index.sh --wait --job <id>` and collect the exit code.
 6. If indexing failed, STOP planning immediately and report the error. Never continue to Phase 1.
-7. If Phase 0 succeeds, set/record Phase 1 state and immediately spawn all four missing discovery lane agents before broad main-agent context reads or code/doc exploration.
+7. If Phase 0 succeeds, set/record Phase 1 state, immediately spawn the three missing subagent discovery lanes (Patterns, Constraints, External), then run the main-agent Architecture lane with GitNexus, before any other broad main-agent context reads or code/doc exploration.
 ```
 
 `UserPromptSubmit` attempts step 1-3 automatically for explicit `/planning` invocations. When its injected context contains an early `job_id`, reuse that job; do not launch a duplicate. If no early job could be started safely, manually call the resolver and `index.sh` before any broad context reads.
@@ -358,7 +358,7 @@ Evidence rules:
 - The four combined-index booleans (`project_index_ran`, `project_index_ok`, `serena_index_ok`, `gitnexus_index_ok`) must all be `true` only after terminal success is collected.
 - For background mode, `project_index_waited` must be `true`, the job id must be safe, and `project_index_jobs[project_index_job_id]` must be preserved from `index.sh` with matching `target_root`, terminal `status="succeeded"`, numeric `exit_code=0`, and non-empty `collected_at`. Never reconstruct success from a launch alone.
 
-Immediately after these checks succeed, transition to `current_phase="1"` and spawn all four missing discovery lanes as background `general-purpose` agents. Do not insert a broad main-agent requirement/code/docs reading pass between Phase 0 success and the Phase 1 launches.
+Immediately after these checks succeed, transition to `current_phase="1"`, spawn the three missing subagent discovery lanes (Patterns, Constraints, External) as background `general-purpose` agents, then execute the main-agent Architecture lane with GitNexus (write `1-architecture.md` directly; never spawn a subagent for it). Do not insert a broad main-agent requirement/code/docs reading pass between Phase 0 success and the Phase 1 launches.
 
 The planning guard re-derives the root from existing anchor evidence and blocks Phase 0 completion when the recorded target does not match. It then validates the feature workspace under that selected target repo. In particular:
 

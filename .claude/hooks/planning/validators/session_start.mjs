@@ -21,7 +21,7 @@ export async function validateSessionStart(input, projectDir) {
 
   const phase = String(state.current_phase ?? "");
   const resumeRequirement = phase === "1"
-    ? `  resume requirement: derive HISTORY_ROOT from phase_outputs.0.project_index_root, then immediately launch missing/failed/orphaned Phase 1 lanes as background general-purpose agents before broad main-agent context reads. Copy the exact ${DISCOVERY_CONTRACT_BEGIN} block from launch-discovery-agents.md and substitute actual lane/artifact values. Do not pre-mark running; running requires verified launch identity. Identity-less running is orphaned/retryable. Once all four files exist, read them as default context and self-fill only specific gaps.`
+    ? `  resume requirement: derive HISTORY_ROOT from phase_outputs.0.project_index_root, then immediately launch missing/failed/orphaned subagent lanes (Patterns, Constraints, External) as background general-purpose agents. Copy the exact ${DISCOVERY_CONTRACT_BEGIN} block from launch-discovery-agents.md and substitute actual lane/artifact values. The Architecture lane is main-agent-owned: if 1-architecture.md is missing, produce it directly with GitNexus tools (query/context/impact/route_map/cypher) instead of spawning a subagent. Do not pre-mark running; running requires verified launch identity. Identity-less running is orphaned/retryable. Once all four files exist, read them as default context and self-fill only specific gaps.`
     : "  resume requirement: before continuing planning, derive HISTORY_ROOT from phase_outputs.0.project_index_root (fallback normal project root only when no target is selected), then reread the original requirement source and existing planning artifacts needed for the current phase.";
 
   const lines = [
