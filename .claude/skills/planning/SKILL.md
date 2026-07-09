@@ -19,7 +19,7 @@ This skill is the operating manual. Mechanical gates are enforced by `.claude/ho
 2. Never skip a phase in the active mode.
 3. Begin every planning response with the PIPELINE STATUS header.
 4. Phase 1 obtains coverage for exactly 4 canonical discovery lanes: Architecture, Patterns, Constraints, and External.
-5. Immediately after successful Phase 0, launch the three missing/retryable subagent discovery lanes (Patterns, Constraints, External) with background `Agent` calls using `subagent_type="general-purpose"` and the exact versioned `[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]` block from `references/launch-discovery-agents.md`; do not rely on fragile paraphrase. The Architecture lane is main-agent-owned: while the subagent lanes run, the main agent produces `1-architecture.md` directly with GitNexus tools (`query`/`context`/`impact`/`route_map`/`cypher`) at the same full-detail content bar — never spawn an Architecture subagent. Each subagent lane writes its own full detailed, non-summary canonical Markdown file directly under `HISTORY_ROOT/history/<feature>/discovery-lanes/`. The main agent verifies/reads all four files, compiles `discovery.md`, and manages planning state; it must not copy response bodies into lane files or replace lane files with summaries.
+5. Immediately after successful Phase 0, launch the three missing/retryable subagent discovery lanes (Patterns, Constraints, External) with background `Agent` calls — one lane per message, exactly one Agent call per response (multi-call batches risk tool-call truncation) — using `subagent_type="general-purpose"` and the exact versioned `[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]` block from `references/launch-discovery-agents.md`; do not rely on fragile paraphrase. The Architecture lane is main-agent-owned: while the subagent lanes run, the main agent produces `1-architecture.md` directly with GitNexus tools (`query`/`context`/`impact`/`route_map`/`cypher`) at the same full-detail content bar — never spawn an Architecture subagent. Each subagent lane writes its own full detailed, non-summary canonical Markdown file directly under `HISTORY_ROOT/history/<feature>/discovery-lanes/`. The main agent verifies/reads all four files, compiles `discovery.md`, and manages planning state; it must not copy response bodies into lane files or replace lane files with summaries.
 6. Every phase transition updates `.planning/state/planning-state-v2.json`, the single authoritative planning status/state file.
 7. Phase 2.5 approval is required before Phase 3+ unless Lightweight Mode was explicitly requested and recorded.
 8. If a planning hook blocks, obey the hook message before continuing.
@@ -43,7 +43,7 @@ State file    : .planning/state/planning-state-v2.json
 =======================
 ```
 
-For a Phase 1 launch turn, this header is the only text before the missing subagent-lane `Agent` calls (the main-agent Architecture lane work follows in the same turn).
+For a Phase 1 launch turn, this header is the only text before that turn's single subagent-lane `Agent` call (one lane per message; the main-agent Architecture lane work follows once all three subagent lanes are launched).
 
 ## Output Standard
 
@@ -109,7 +109,7 @@ As part of the same Phase 0 pre-flight, create/ensure the canonical feature work
 
 ### Phase 1 — Discovery
 
-Use `references/launch-discovery-agents.md`. The 4 lanes are orthogonal dimensions, not backend/frontend splits. **Immediately after Phase 0 succeeds**, spawn the three missing subagent lanes in parallel, then run the Architecture lane in the main agent itself:
+Use `references/launch-discovery-agents.md`. The 4 lanes are orthogonal dimensions, not backend/frontend splits. **Immediately after Phase 0 succeeds**, spawn the three missing subagent lanes — one lane per message, in consecutive messages (once accepted they still run concurrently in the background) — then run the Architecture lane in the main agent itself:
 
 1. Architecture discovery — **main-agent-owned**: produced directly with GitNexus tools (`list_repos`, `query`, `context`, `impact`, `route_map`, `cypher`), written straight to `1-architecture.md`. No fixed call budget — use as many GitNexus calls as the feature needs. Never spawn a subagent for this lane; the guard denies it.
 2. Pattern discovery — subagent

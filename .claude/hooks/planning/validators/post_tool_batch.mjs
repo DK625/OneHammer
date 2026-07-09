@@ -11,7 +11,7 @@ import {
 function phase1AgentGuidance(message) {
   return additionalContext(
     "PostToolBatch",
-    `[planning-guard] ${message}\n\nCorrective action: do not ask the user to fix this manually. Copy the exact ${DISCOVERY_CONTRACT_BEGIN} block from .claude/skills/planning/references/launch-discovery-agents.md, substitute the actual feature/lane artifact, and launch only missing/failed/orphaned subagent lanes (Patterns, Constraints, External) as background general-purpose agents. The Architecture lane is main-agent-owned: run GitNexus directly and write 1-architecture.md yourself instead of spawning it. Do not pre-mark running. Record running only after an accepted launch with a verified launch identity. Canonical lane files are the handoff; the main agent compiles discovery.md and manages JSON state.`,
+    `[planning-guard] ${message}\n\nCorrective action: do not ask the user to fix this manually. Copy the exact ${DISCOVERY_CONTRACT_BEGIN} block from .claude/skills/planning/references/launch-discovery-agents.md, substitute the actual feature/lane artifact, and re-issue ONE lane per message (a single Agent call per response) for only missing/failed/orphaned subagent lanes (Patterns, Constraints, External); multi-call batches get truncated and drop subagent_type/run_in_background or cut the contract block. The Architecture lane is main-agent-owned: run GitNexus directly and write 1-architecture.md yourself instead of spawning it. Do not pre-mark running. Record running only after an accepted launch with a verified launch identity. Canonical lane files are the handoff; the main agent compiles discovery.md and manages JSON state.`,
   );
 }
 
@@ -49,6 +49,10 @@ export async function validatePostToolBatch(input, projectDir) {
       issues.push("one Agent call omitted run_in_background=true");
     }
     issues.push(...validateDiscoveryAgentPromptContract(i, lane, state.feature).map((issue) => `one Agent call: ${issue}`));
+  }
+
+  if (agentCalls.length > 1) {
+    issues.push(`this message launched ${agentCalls.length} discovery Agent calls; launch exactly one lane per message to avoid tool-call truncation`);
   }
 
   const duplicateLaunches = launchedLaneIds.filter((id, idx) => launchedLaneIds.indexOf(id) !== idx);

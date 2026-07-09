@@ -28,7 +28,7 @@ The three subagent lanes use:
 - the exact versioned prompt block defined below
 - direct write to that lane's own canonical Markdown file
 
-**Never spawn an Agent for the Architecture lane** — the guard denies it. Launch the three subagent lanes first (one parallel batch), then, while they run in the background, execute the Architecture lane inline per the protocol below.
+**Never spawn an Agent for the Architecture lane** — the guard denies it. Launch the three subagent lanes first — **one lane per message** (exactly one Agent call per response; batching multiple lane launches in one response risks tool-call truncation that drops `subagent_type`/`run_in_background` or cuts the contract block mid-line). Once accepted, the background lanes still run concurrently. Then, while they run, execute the Architecture lane inline per the protocol below.
 
 The canonical files are the handoff. The main agent reads/verifies those files, compiles `discovery.md`, and manages planning state; it does not retrieve/copy background response bodies into lane files.
 
@@ -56,7 +56,7 @@ After Phase 0 is valid:
 3. Determine lane coverage from canonical files plus `phase_outputs.1.lanes`.
 4. Treat `missing`, `failed`, and `orphaned` as retryable (subagent lanes).
 5. Treat `running` as non-retryable only when it carries a verified launch identity (subagent lanes).
-6. Launch all retryable subagent lanes (Patterns, Constraints, External) immediately, preferably in one parallel batch.
+6. Launch all retryable subagent lanes (Patterns, Constraints, External) immediately — one lane per message, in consecutive messages; they still run concurrently in the background once accepted.
 7. After launch acceptance, record launch identity if the runtime exposes it.
 8. While subagent lanes run, execute the main-agent Architecture lane with GitNexus and write `1-architecture.md` directly (see protocol above). If the file already exists, verify it instead of redoing it.
 9. Wait for canonical files; retry only missing/failed/orphaned subagent lanes.
