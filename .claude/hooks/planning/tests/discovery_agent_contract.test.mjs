@@ -69,7 +69,7 @@ function preToolInput(toolInput) {
   };
 }
 
-test("canonical contract prompts pass direct validation for the three subagent lanes", () => {
+test("canonical contract prompts pass direct validation for the subagent lane(s)", () => {
   for (const lane of SUBAGENT_DISCOVERY_LANES) {
     const toolInput = canonicalAgentInput(lane);
     assert.deepEqual(
@@ -80,24 +80,26 @@ test("canonical contract prompts pass direct validation for the three subagent l
   }
 });
 
-test("architecture lane contract is rejected as main-agent-owned", () => {
-  const architecture = DISCOVERY_LANES.find((lane) => lane.id === "architecture");
-  const toolInput = canonicalAgentInput(architecture);
-  const issues = validateDiscoveryAgentPromptContract(toolInput, architecture, "feature-x");
-  assert.ok(
-    issues.some((issue) => issue.includes("main-agent-owned")),
-    `expected main-agent-owned rejection, got: ${JSON.stringify(issues)}`,
-  );
+test("main-agent lane contracts (architecture, patterns, constraints) are rejected", () => {
+  for (const id of ["architecture", "patterns", "constraints"]) {
+    const lane = DISCOVERY_LANES.find((candidate) => candidate.id === id);
+    const toolInput = canonicalAgentInput(lane);
+    const issues = validateDiscoveryAgentPromptContract(toolInput, lane, "feature-x");
+    assert.ok(
+      issues.some((issue) => issue.includes("main-agent-owned")),
+      `expected main-agent-owned rejection for ${id}, got: ${JSON.stringify(issues)}`,
+    );
+  }
 });
 
-test("copy-safe launcher documentation prompts pass guard contract for the three subagent lanes", async () => {
+test("copy-safe launcher documentation prompts pass guard contract for the subagent lane(s)", async () => {
   const doc = await readFile(
     join(ROOT, ".claude", "skills", "planning", "references", "launch-discovery-agents.md"),
     "utf8",
   );
   const encodedPrompts = [...doc.matchAll(/prompt="((?:\\.|[^"\\])*)",\n  run_in_background=true/g)]
     .map((match) => match[1]);
-  assert.equal(encodedPrompts.length, 3, "expected three copy-safe Agent prompt examples (architecture is main-agent-owned)");
+  assert.equal(encodedPrompts.length, 1, "expected one copy-safe Agent prompt example (architecture/patterns/constraints are main-agent-owned)");
 
   for (const lane of SUBAGENT_DISCOVERY_LANES) {
     const encoded = encodedPrompts.find((value) => value.includes(`lane=${lane.id}\\n`));
@@ -113,27 +115,27 @@ test("copy-safe launcher documentation prompts pass guard contract for the three
 });
 
 test("malformed prompt without canonical block fails", () => {
-  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "patterns");
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "external");
   const toolInput = {
     ...canonicalAgentInput(lane),
-    prompt: "Please do full detailed patterns discovery and write the file directly.",
+    prompt: "Please do full detailed external discovery and write the file directly.",
   };
   const issues = validateDiscoveryAgentPromptContract(toolInput, lane, "feature-x");
   assert.ok(issues.some((issue) => issue.includes("missing canonical")));
 });
 
 test("canonical block with wrong lane artifact fails", () => {
-  const patterns = DISCOVERY_LANES.find((lane) => lane.id === "patterns");
-  const toolInput = canonicalAgentInput(patterns);
+  const external = DISCOVERY_LANES.find((lane) => lane.id === "external");
+  const toolInput = canonicalAgentInput(external);
   toolInput.prompt = toolInput.prompt.replace(
+    "artifact=history/feature-x/discovery-lanes/4-external.md",
     "artifact=history/feature-x/discovery-lanes/2-patterns.md",
-    "artifact=history/feature-x/discovery-lanes/3-constraints.md",
   );
-  const issues = validateDiscoveryAgentPromptContract(toolInput, patterns, "feature-x");
+  const issues = validateDiscoveryAgentPromptContract(toolInput, external, "feature-x");
   assert.ok(issues.some((issue) => issue.includes("contract artifact must be")));
 });
 
-test("PreToolUse accepts canonical prompts for the three missing subagent lanes", async () => {
+test("PreToolUse accepts canonical prompts for the missing subagent lane(s)", async () => {
   const control = await tempControl();
   await writeState(control, {});
   for (const lane of SUBAGENT_DISCOVERY_LANES) {
@@ -154,9 +156,9 @@ test("PreToolUse denies an architecture subagent launch even when the lane is mi
 test("failed lane remains retryable", async () => {
   const control = await tempControl();
   await writeState(control, {
-    patterns: { status: "failed", error: "previous PreToolUse denial" },
+    external: { status: "failed", error: "previous PreToolUse denial" },
   });
-  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "patterns");
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "external");
   const decision = await validatePreToolUse(preToolInput(canonicalAgentInput(lane)), control);
   assert.equal(decision, null);
 });
@@ -164,9 +166,9 @@ test("failed lane remains retryable", async () => {
 test("running without launch identity is orphaned and retryable", async () => {
   const control = await tempControl();
   await writeState(control, {
-    patterns: { status: "running" },
+    external: { status: "running" },
   });
-  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "patterns");
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "external");
   const decision = await validatePreToolUse(preToolInput(canonicalAgentInput(lane)), control);
   assert.equal(decision, null);
   assert.equal(classifyDiscoveryLaneLedger({ status: "running" }, false), "orphaned");
@@ -175,9 +177,9 @@ test("running without launch identity is orphaned and retryable", async () => {
 test("running with verified agent identity is duplicate-blocked", async () => {
   const control = await tempControl();
   await writeState(control, {
-    patterns: { status: "running", agent_id: "agent-123" },
+    external: { status: "running", agent_id: "agent-123" },
   });
-  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "patterns");
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "external");
   const decision = await validatePreToolUse(preToolInput(canonicalAgentInput(lane)), control);
   assert.ok(decision, "expected duplicate denial");
   assert.match(JSON.stringify(decision), /already running/);
@@ -201,9 +203,9 @@ test("attempt identity requires launch confirmation to count as running", () => 
 test("completed ledger without canonical artifact is orphaned/retryable", async () => {
   const control = await tempControl();
   await writeState(control, {
-    patterns: { status: "completed" },
+    external: { status: "completed" },
   });
-  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "patterns");
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "external");
   const decision = await validatePreToolUse(preToolInput(canonicalAgentInput(lane)), control);
   assert.equal(decision, null);
   assert.equal(classifyDiscoveryLaneLedger({ status: "completed" }, false), "orphaned");
@@ -212,13 +214,13 @@ test("completed ledger without canonical artifact is orphaned/retryable", async 
 test("existing canonical artifact suppresses duplicate launch even with failed ledger", async () => {
   const control = await tempControl();
   await writeState(control, {
-    patterns: { status: "failed" },
+    external: { status: "failed" },
   });
-  const artifact = join(control, "history", "feature-x", "discovery-lanes", "2-patterns.md");
+  const artifact = join(control, "history", "feature-x", "discovery-lanes", "4-external.md");
   await mkdir(dirname(artifact), { recursive: true });
-  await writeFile(artifact, "# Patterns\n\nDetailed evidence\n");
+  await writeFile(artifact, "# External\n\nDetailed evidence\n");
 
-  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "patterns");
+  const lane = DISCOVERY_LANES.find((candidate) => candidate.id === "external");
   const decision = await validatePreToolUse(preToolInput(canonicalAgentInput(lane)), control);
   assert.ok(decision, "existing artifact should block duplicate launch");
   assert.match(JSON.stringify(decision), /already completed/);

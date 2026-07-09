@@ -71,10 +71,10 @@ test("discovery artifact schema is component/repo agnostic", () => {
 });
 
 test("discovery Agent prompt accepts canonical machine-checkable lane contract", () => {
-  const lane = discoveryLaneById("patterns");
+  const lane = discoveryLaneById("external");
   const prompt = [
-    "Perform patterns discovery and preserve detailed evidence.",
-    renderDiscoveryContractBlock("patterns", "example"),
+    "Perform external discovery and preserve detailed evidence.",
+    renderDiscoveryContractBlock("external", "example"),
     "Write the lane artifact directly; the main agent owns synthesis and state.",
   ].join("\n\n");
 
@@ -109,7 +109,7 @@ test("discovery Agent prompt rejects old response-only main-agent persistence co
 test("Phase 1 launch protocol uses general-purpose for all subagent lanes", async () => {
   const text = await readFile(join(ROOT, ".claude", "skills", "planning", "references", "launch-discovery-agents.md"), "utf8");
   const launchTypes = [...text.matchAll(/subagent_type="([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(launchTypes.length >= 3);
+  assert.ok(launchTypes.length >= 1);
   assert.deepEqual(new Set(launchTypes), new Set(["general-purpose"]));
   assert.doesNotMatch(text, /subagent_type="Explore"/);
 });
@@ -117,7 +117,8 @@ test("Phase 1 launch protocol uses general-purpose for all subagent lanes", asyn
 test("Phase 1 launch protocol uses canonical files as handoff and has no side-channel retrieval path", async () => {
   const text = await readFile(join(ROOT, ".claude", "skills", "planning", "references", "launch-discovery-agents.md"), "utf8");
   assert.match(text, /canonical(?: Markdown)? files are the handoff/i);
-  assert.match(text, /full detailed, non-summary Markdown/i);
+  assert.match(text, /full_detailed_non_summary/);
+  assert.match(text, /evidence-dense/i);
   assert.match(text, /main agent.*compiles `discovery\.md`/is);
   assert.doesNotMatch(text, /side channel retrieval is required/i);
 });

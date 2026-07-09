@@ -1,12 +1,11 @@
 ---
 name: launch-discovery-agents
 description: >
-  Phase 1 launcher protocol. Immediately launches missing/retryable subagent
-  discovery lanes (Patterns, Constraints, External) after successful Phase 0
-  using a versioned machine-checkable Agent prompt contract, then runs the
-  Architecture lane in the main agent itself via GitNexus. Each general-purpose
-  subagent writes its own canonical lane artifact; the main agent writes
-  1-architecture.md directly, verifies files, compiles discovery.md, and owns state.
+  Phase 1 launcher protocol. Immediately launches the External discovery lane
+  as a background general-purpose subagent (versioned machine-checkable Agent
+  prompt contract), then runs the Architecture, Patterns, and Constraints lanes
+  in the main agent itself via GitNexus/Serena, writing the three canonical lane
+  files directly. The main agent verifies files, compiles discovery.md, and owns state.
 ---
 
 # Phase 1: Discovery Lane Coverage Protocol
@@ -14,38 +13,48 @@ description: >
 Phase 1 starts immediately after Phase 0 succeeds. Coverage is still the four orthogonal lanes, but ownership is split:
 
 1. Architecture — **main-agent-owned** (GitNexus-direct; no subagent)
-2. Patterns — subagent
-3. Constraints — subagent
-4. External — subagent
+2. Patterns — **main-agent-owned** (GitNexus/Serena-direct; no subagent)
+3. Constraints — **main-agent-owned** (GitNexus/Serena + config reads; no subagent)
+4. External — subagent (Exa/web research)
 
-All four lanes share the same delivery promise: **full detailed, non-summary Markdown** at the canonical lane path.
+**Launch order: spawn the External subagent FIRST** (it is the slowest lane — network latency), in its own message with exactly one Agent call, then execute the three main-agent lanes while it runs in the background.
 
-The three subagent lanes use:
-
-- `subagent_type="general-purpose"`
-- `run_in_background=true`
-- exactly one canonical lane per Agent call
-- the exact versioned prompt block defined below
-- direct write to that lane's own canonical Markdown file
-
-**Never spawn an Agent for the Architecture lane** — the guard denies it. Launch the three subagent lanes first — **one lane per message** (exactly one Agent call per response; batching multiple lane launches in one response risks tool-call truncation that drops `subagent_type`/`run_in_background` or cuts the contract block mid-line). Once accepted, the background lanes still run concurrently. Then, while they run, execute the Architecture lane inline per the protocol below.
+**Never spawn an Agent for the Architecture, Patterns, or Constraints lanes** — the guard denies it. They are produced directly by the main agent per the protocol below.
 
 The canonical files are the handoff. The main agent reads/verifies those files, compiles `discovery.md`, and manages planning state; it does not retrieve/copy background response bodies into lane files.
 
-## Main-Agent Architecture Lane (GitNexus-direct)
+## Main-Agent Lanes (GitNexus/Serena-direct)
 
-The main agent produces `HISTORY_ROOT/history/<feature>/discovery-lanes/1-architecture.md` itself, immediately after launching the three subagent lanes. Use the GitNexus MCP tools freely — there is no fixed call budget; use as many calls as the feature needs:
+The main agent produces the three files itself, immediately after launching the External subagent. There is no fixed tool-call budget — use as many GitNexus/Serena calls as the feature needs. Recommended order: Architecture → Patterns → Constraints, because one shared discovery pass feeds all three files (do not re-discover the same symbols per lane — reuse evidence already in context and cite it in each file).
+
+### Shared discovery pass
 
 1. `list_repos` — confirm the indexed repo name and freshness; pass `repo` explicitly on every later call when more than one repo is indexed.
-2. `query` — locate the execution flows and the source-of-truth module(s) for the feature concept; a second `query` for auth/config/adjacent patterns when relevant.
-3. `context` — 360° view of each load-bearing symbol (callers, callees, process membership); use `include_content: true` when the exact body/signature is contract-relevant.
+2. `query` — locate the execution flows and the source-of-truth module(s) for the feature concept; additional `query` calls for auth/config/adjacent patterns when relevant.
+3. `context` — 360° view of each load-bearing symbol (callers, callees, process membership); `include_content: true` when the exact body/signature is contract-relevant.
 4. `impact` (direction=upstream, includeTests=true) — blast radius of the main façade/source-of-truth symbols.
-5. `route_map` — HTTP surface inventory (verify whether needed routes exist today).
-6. `cypher` — file-level `DEFINES` inventories for exact symbol/line tables, and any structural question the other tools do not answer.
+5. `route_map` — HTTP surface inventory.
+6. `cypher` — file-level `DEFINES` inventories for exact symbol/line tables.
+7. Serena (`find_symbol`, `get_symbols_overview`, `find_referencing_symbols`) — literal bodies and conventions the graph does not carry.
+8. Targeted file reads for constraints sources: manifests, lockfiles, service units, CI configs, `.gitignore`, env/config files.
 
-The lane file must meet the same content bar as a subagent lane: scope, packages/modules/entry points/boundaries, architecture sketch, file/symbol evidence with line numbers, provider/source-of-truth before dependent consumer impact when cross-surface, Browser Runbook candidates for durable UI route/login/selector/state cues, risks, constraints, gaps, and open questions. Include a GitNexus evidence index (which call produced which claim). State honestly what GitNexus alone could not see (literal values inside unfetched bodies, ops/config context) and flag those to the Patterns/Constraints lanes instead of guessing.
+### Content bar per lane file
 
-Ledger lifecycle for this lane: it never becomes `running` with a launch identity. Write the canonical file, then record `status="completed"` with `owner="main-agent"` in `phase_outputs.1.lanes.architecture`. The canonical file on disk is the completion evidence.
+All three files are **evidence-dense and decision-complete** — compact is good, vague is not. Every claim carries `file:line` or a literal value. The acceptance test for each file: *a fresh session that reads only this file (plus the requirement source) can write phase contracts without re-running discovery.*
+
+| File | Target length | Must contain |
+|---|---|---|
+| `1-architecture.md` | ~200–300 lines | scope; packages/modules/entry points/boundaries; architecture sketch; symbol/line evidence tables; provider/source-of-truth before dependent consumer impact when cross-surface; blast radius; cross-surface impact set in topological order; risks; gaps; open questions |
+| `2-patterns.md` | ~250–400 lines | similar implementations with **verbatim signatures/literals to mirror** (adapter shapes, naming/alias conventions, widget/storage key strings, test patterns); reusable utilities; anti-patterns; file/symbol evidence; gaps; open questions |
+| `3-constraints.md` | ~200–300 lines | concrete constraint values (runtime/dependency versions, env vars, config keys, service units, CI/build/test requirements, security/hardening state) by severity; migration/provisioning implications; file evidence; gaps; open questions |
+
+Targets are ranges, not hard caps — evidence never gets cut to satisfy a line count; prose gets cut instead. Each file also records Browser Runbook candidates (durable UI route/login/selector/state cues) when the feature has a UI surface, an evidence index (which tool call produced which claim), and an honest "what the tools could not see" note instead of guesses.
+
+**Write files section-by-section as complete sections** (finish a section before starting the next; keep open-questions maintained as you go) so a manually-refreshed session inherits a usable partial file rather than a truncated one.
+
+### Ledger lifecycle for main-agent lanes
+
+They never become `running` with a launch identity. Write the canonical file, then record `status="completed"` with `owner="main-agent"` in `phase_outputs.1.lanes.<lane>`. The canonical file on disk is the completion evidence. A missing file simply means the main agent produces it now.
 
 ## Fresh/Refresh Launch Order
 
@@ -54,19 +63,18 @@ After Phase 0 is valid:
 1. Derive `HISTORY_ROOT` from `phase_outputs.0.project_index_root`; only use normal project/control root when no target repo exists.
 2. Ensure `HISTORY_ROOT/history/<feature>/discovery-lanes/` exists.
 3. Determine lane coverage from canonical files plus `phase_outputs.1.lanes`.
-4. Treat `missing`, `failed`, and `orphaned` as retryable (subagent lanes).
-5. Treat `running` as non-retryable only when it carries a verified launch identity (subagent lanes).
-6. Launch all retryable subagent lanes (Patterns, Constraints, External) immediately — one lane per message, in consecutive messages; they still run concurrently in the background once accepted.
-7. After launch acceptance, record launch identity if the runtime exposes it.
-8. While subagent lanes run, execute the main-agent Architecture lane with GitNexus and write `1-architecture.md` directly (see protocol above). If the file already exists, verify it instead of redoing it.
-9. Wait for canonical files; retry only missing/failed/orphaned subagent lanes.
-10. Read/verify all four files, fill only specific gaps, compile `discovery.md`, then record Phase 1 completion.
+4. If the External lane is `missing`/`failed`/`orphaned`, launch it immediately — exactly one Agent call in its own message (a multi-call batch risks tool-call truncation that drops `subagent_type`/`run_in_background` or cuts the contract block mid-line).
+5. Treat External `running` as non-retryable only when it carries a verified launch identity.
+6. After launch acceptance, record launch identity if the runtime exposes it.
+7. While External runs, produce the missing main-agent lane files in order `1-architecture.md` → `2-patterns.md` → `3-constraints.md` (see protocol above). Files that already exist are verified, not redone.
+8. Wait for the External canonical file; retry only a missing/failed/orphaned External lane.
+9. Read/verify all four files, fill only specific gaps, compile `discovery.md`, then record Phase 1 completion.
 
 ## Critical State Lifecycle
 
-Applies to the three subagent lanes. (The Architecture lane skips this lifecycle: it goes straight from `missing` to `completed` with `owner="main-agent"` once the canonical file is written.)
+Applies to the External subagent lane only. (Main-agent lanes skip this lifecycle: they go straight from `missing` to `completed` with `owner="main-agent"` once the canonical file is written.)
 
-Never pre-mark a lane `running` before the Agent tool call succeeds.
+Never pre-mark the lane `running` before the Agent tool call succeeds.
 
 Valid lifecycle:
 
@@ -89,18 +97,18 @@ If PreToolUse denies the Agent call, or launch fails before a verifiable identit
 
 - do not leave `status="running"`;
 - leave the lane `missing`, or record `failed`/`orphaned` with error evidence;
-- retry that lane with the canonical prompt.
+- retry the lane with the canonical prompt.
 
 Refresh recovery rule: legacy/bad state with `status="running"` but no verified launch identity is classified as `orphaned` by the guard and is retryable. It must not create a permanent `already running` deadlock.
 
 ## Canonical Machine-Checkable Contract
 
-Every discovery Agent prompt must contain exactly one block with these markers and keys. Copy it verbatim; change only `lane=` and `artifact=` to the actual lane/feature. `lane=architecture` is invalid here — that lane is main-agent-owned and never spawned.
+The External Agent prompt must contain exactly one block with these markers and keys. Copy it verbatim; change only `artifact=` to the actual feature. `lane=architecture`, `lane=patterns`, and `lane=constraints` are invalid here — those lanes are main-agent-owned and never spawned.
 
 ```text
 [PLANNING_DISCOVERY_AGENT_CONTRACT_V1]
-lane=<patterns|constraints|external>
-artifact=history/<feature>/discovery-lanes/<canonical-numbered-file>.md
+lane=external
+artifact=history/<feature>/discovery-lanes/4-external.md
 requirement_input=provided_requirement_source_or_current_request
 delivery=direct_canonical_markdown_file
 detail=full_detailed_non_summary
@@ -115,7 +123,7 @@ browser_runbook_candidates=durable_ui_route_login_selector_state_cues
 
 Do not paraphrase the block. Additional lane-specific prose may appear before or after it, but the block itself is the guard contract.
 
-## Copy-Safe Launcher Prompts
+## Copy-Safe Launcher Prompt
 
 Substitute all placeholders before calling `Agent`. In particular:
 
@@ -123,33 +131,9 @@ Substitute all placeholders before calling `Agent`. In particular:
 - `<REQUIREMENT_SOURCE_PATH_OR_CURRENT_REQUEST>` must be the actual requirement source or current request.
 - `<HISTORY_ROOT>` must be the selected target repo root from Phase 0.
 
-### Architecture
+### Architecture / Patterns / Constraints
 
-No Agent call. The main agent runs this lane itself with GitNexus — see "Main-Agent Architecture Lane (GitNexus-direct)" above.
-
-### Patterns
-
-```text
-Agent(
-  name="phase1-patterns",
-  subagent_type="general-purpose",
-  description="Patterns discovery lane — <feature>",
-  prompt="Find reusable implementations, utilities, naming conventions, and coding patterns for feature <feature>. Read requirement source/current request: <REQUIREMENT_SOURCE_PATH_OR_CURRENT_REQUEST>. Use Serena/GitNexus/code intelligence as primary tools when available.\n\n[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\nlane=patterns\nartifact=history/<feature>/discovery-lanes/2-patterns.md\nrequirement_input=provided_requirement_source_or_current_request\ndelivery=direct_canonical_markdown_file\ndetail=full_detailed_non_summary\nwrite_scope=canonical_lane_file_only\nforbid=.planning/,planning-state-v2.json,discovery.md,other_lane_files\nmain_agent_owns=read_verify_lane_files,compile_discovery_md,manage_planning_state\nhandoff=canonical_file_not_background_response_body\ntopology=read_active_repo_project_instructions,discover_actual_topology,provider_source_of_truth_before_dependent_consumer_impact\nbrowser_runbook_candidates=durable_ui_route_login_selector_state_cues\n[/PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\n\nWrite the full lane artifact directly to <HISTORY_ROOT>/history/<feature>/discovery-lanes/2-patterns.md. Read active repo/project instructions and discover actual topology before conclusions. Include scope, similar implementations, reusable utilities, conventions, anti-patterns, file/symbol evidence, provider/source-of-truth before dependent consumer impact when cross-surface, Browser Runbook candidates for durable UI route/login/selector/state cues, risks, constraints, gaps, and open questions. Preserve evidence and reasoning; do not compress to a short recap. Write only this lane file. The main agent owns discovery.md and planning state.",
-  run_in_background=true
-)
-```
-
-### Constraints
-
-```text
-Agent(
-  name="phase1-constraints",
-  subagent_type="general-purpose",
-  description="Constraints discovery lane — <feature>",
-  prompt="Identify technical constraints for feature <feature>: manifests, config, environment, CI, runtime versions, dependencies, and build/test requirements. Read requirement source/current request: <REQUIREMENT_SOURCE_PATH_OR_CURRENT_REQUEST>.\n\n[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\nlane=constraints\nartifact=history/<feature>/discovery-lanes/3-constraints.md\nrequirement_input=provided_requirement_source_or_current_request\ndelivery=direct_canonical_markdown_file\ndetail=full_detailed_non_summary\nwrite_scope=canonical_lane_file_only\nforbid=.planning/,planning-state-v2.json,discovery.md,other_lane_files\nmain_agent_owns=read_verify_lane_files,compile_discovery_md,manage_planning_state\nhandoff=canonical_file_not_background_response_body\ntopology=read_active_repo_project_instructions,discover_actual_topology,provider_source_of_truth_before_dependent_consumer_impact\nbrowser_runbook_candidates=durable_ui_route_login_selector_state_cues\n[/PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\n\nWrite the full lane artifact directly to <HISTORY_ROOT>/history/<feature>/discovery-lanes/3-constraints.md. Read active repo/project instructions and discover actual topology before conclusions. Include scope, constraints by severity, technical boundaries, migration/runtime/auth/precision/build-test implications, file/symbol evidence, provider/source-of-truth before dependent consumer impact when cross-surface, Browser Runbook candidates for durable UI route/login/selector/state cues, risks, gaps, and open questions. Preserve evidence and reasoning; do not compress to a short recap. Write only this lane file. The main agent owns discovery.md and planning state.",
-  run_in_background=true
-)
-```
+No Agent calls. The main agent runs these lanes itself — see "Main-Agent Lanes (GitNexus/Serena-direct)" above.
 
 ### External
 
@@ -165,7 +149,7 @@ Agent(
 
 ## Retry Classification
 
-Applies to the three subagent lanes; for the Architecture lane the only signal is the canonical file (present = completed, absent = the main agent must produce it now).
+Applies to the External subagent lane; for the main-agent lanes the only signal is the canonical file (present = completed, absent = the main agent must produce it now).
 
 Use canonical files as the strongest completion evidence.
 
@@ -183,7 +167,7 @@ Rate-limit blocks remain separately controlled by `blocked_rate_limit` and `retr
 
 ## File Gate Before Phase 1.5
 
-Do not start Phase 1.5 until all four canonical files exist and are detailed, non-error outputs:
+Do not start Phase 1.5 until all four canonical files exist and are evidence-dense, non-error outputs:
 
 ```text
 history/<feature>/discovery-lanes/1-architecture.md
@@ -209,8 +193,8 @@ Example completion ledger:
 ```json
 "lanes": {
   "architecture": { "status": "completed", "owner": "main-agent", "artifact_path": "history/<feature>/discovery-lanes/1-architecture.md" },
-  "patterns": { "status": "completed", "agent_name": "phase1-patterns", "artifact_path": "history/<feature>/discovery-lanes/2-patterns.md" },
-  "constraints": { "status": "completed", "agent_name": "phase1-constraints", "artifact_path": "history/<feature>/discovery-lanes/3-constraints.md" },
+  "patterns": { "status": "completed", "owner": "main-agent", "artifact_path": "history/<feature>/discovery-lanes/2-patterns.md" },
+  "constraints": { "status": "completed", "owner": "main-agent", "artifact_path": "history/<feature>/discovery-lanes/3-constraints.md" },
   "external": { "status": "completed", "agent_name": "phase1-external", "artifact_path": "history/<feature>/discovery-lanes/4-external.md" }
 }
 ```

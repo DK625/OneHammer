@@ -32,7 +32,7 @@
         "owner": {
           "type": "string",
           "enum": ["main-agent", "subagent"],
-          "description": "Lane execution owner. The Architecture lane is main-agent-owned (GitNexus-direct, no subagent, no launch identity); the Patterns/Constraints/External lanes are subagent-owned."
+          "description": "Lane execution owner. The Architecture, Patterns, and Constraints lanes are main-agent-owned (GitNexus/Serena-direct, no subagent, no launch identity); the External lane is subagent-owned."
         },
         "agent_id": {
           "type": "string",
@@ -389,7 +389,7 @@
             },
             "lanes": {
               "type": "object",
-              "description": "Coverage ledger for Phase 1 discovery lanes. Immediately after successful Phase 0, the missing/retryable subagent lanes (patterns, constraints, external) launch as background general-purpose agents using the canonical versioned prompt contract; the architecture lane is main-agent-owned (owner=main-agent) and is produced directly with GitNexus, going straight from missing to completed once its canonical file is written. Do not pre-mark a subagent lane running: status=running requires a verified launch identity (agent_id, launch_id, or attempt_id plus launch_confirmed_at). Identity-less running entries are orphaned/retryable rather than permanent duplicate locks. Each lane writes its own canonical detailed Markdown artifact directly; the main agent verifies files, compiles discovery.md, and records state. Phase 1 completes only after all four lane artifacts exist.",
+              "description": "Coverage ledger for Phase 1 discovery lanes. Immediately after successful Phase 0, the missing/retryable external lane launches as a background general-purpose agent using the canonical versioned prompt contract; the architecture, patterns, and constraints lanes are main-agent-owned (owner=main-agent), produced directly with GitNexus/Serena, going straight from missing to completed once each canonical file is written. Do not pre-mark the external lane running: status=running requires a verified launch identity (agent_id, launch_id, or attempt_id plus launch_confirmed_at). Identity-less running entries are orphaned/retryable rather than permanent duplicate locks. Each lane writes its own canonical detailed Markdown artifact directly; the main agent verifies files, compiles discovery.md, and records state. Phase 1 completes only after all four lane artifacts exist.",
               "properties": {
                 "architecture": {
                   "$ref": "#/definitions/discoveryLane"

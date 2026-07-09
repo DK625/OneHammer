@@ -16,10 +16,10 @@ export const DISCOVERY_LANES = [
   { id: "external", label: "External", filename: "4-external.md", re: /external/i },
 ];
 
-// Architecture is main-agent-owned: the main agent produces 1-architecture.md
-// directly with GitNexus (query/context/impact/route_map/cypher) instead of
-// spawning a subagent. Only the remaining lanes are launched as subagents.
-export const MAIN_AGENT_DISCOVERY_LANE_IDS = new Set(["architecture"]);
+// Architecture, Patterns, and Constraints are main-agent-owned: the main agent
+// produces 1-architecture.md, 2-patterns.md, and 3-constraints.md directly with
+// GitNexus/Serena instead of spawning subagents. Only External is a subagent.
+export const MAIN_AGENT_DISCOVERY_LANE_IDS = new Set(["architecture", "patterns", "constraints"]);
 export const SUBAGENT_DISCOVERY_LANES = DISCOVERY_LANES.filter(
   (lane) => !MAIN_AGENT_DISCOVERY_LANE_IDS.has(lane.id),
 );
@@ -128,7 +128,7 @@ export function validateDiscoveryAgentPromptContract(toolInput, lane, feature) {
   const fields = parsed.fields || {};
 
   if (!lane) {
-    issues.push("canonical contract must identify exactly one subagent lane: patterns, constraints, or external");
+    issues.push("canonical contract must identify the external lane (architecture, patterns, and constraints are main-agent-owned)");
   } else if (isMainAgentDiscoveryLane(lane.id)) {
     issues.push(`${lane.label} discovery is main-agent-owned (GitNexus-direct); do not spawn a subagent for it`);
   } else if (fields.lane !== lane.id) {
