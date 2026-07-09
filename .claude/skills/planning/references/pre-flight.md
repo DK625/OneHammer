@@ -13,9 +13,9 @@ Required order when `/planning` starts:
 ```text
 1. Derive a safe target intent from the current /planning prompt/path.
 2. Call the existing `resolve_index_root.mjs` script to resolve TARGET_INDEX_ROOT without reading the requirement body.
-3. Call the existing `index.sh --target <repo> --background` entrypoint immediately; do not reimplement indexing with ad-hoc commands.
+3. Call the existing entrypoint via `bash index.sh --target <repo> --background` (always invoke through `bash`; the script is tracked without an executable bit) immediately; do not reimplement indexing with ad-hoc commands.
 4. While indexing runs, perform only bounded tool/dependency health checks, target-scoped workspace setup, and minimal authoritative-state evidence work.
-5. Before Phase 0 completes, call `index.sh --wait --job <id>` and collect the exit code.
+5. Before Phase 0 completes, call `bash index.sh --wait --job <id>` and collect the exit code.
 6. If indexing failed, STOP planning immediately and report the error. Never continue to Phase 1.
 7. If Phase 0 succeeds, set/record Phase 1 state, immediately spawn the three missing subagent discovery lanes (Patterns, Constraints, External), then run the main-agent Architecture lane with GitNexus, before any other broad main-agent context reads or code/doc exploration.
 ```
@@ -167,10 +167,10 @@ INDEX_JOB_ID="$(
 
 `index.sh` is the single canonical indexing entrypoint. It behaves as follows:
 
-- `index.sh --target <repo>`: synchronous combined index run.
-- `index.sh --target <repo> --background`: start background job and print its job id.
-- `index.sh --wait --job <id>`: wait/collect terminal evidence; exits non-zero when indexing failed.
-- `index.sh --status --job <id>`: non-blocking status probe.
+- `bash index.sh --target <repo>`: synchronous combined index run.
+- `bash index.sh --target <repo> --background`: start background job and print its job id.
+- `bash index.sh --wait --job <id>`: wait/collect terminal evidence; exits non-zero when indexing failed.
+- `bash index.sh --status --job <id>`: non-blocking status probe.
 - `--target-root` is accepted as an alias for `--target`.
 
 `index.sh` performs the combined work directly. It requires an explicit target, canonicalizes and enters that target, verifies both required commands, and runs in order:
@@ -191,7 +191,7 @@ After the background job starts, keep Phase 0 narrow. Perform only the checks/ev
 - verify Serena runtime readiness;
 - prepare the target-scoped feature workspace;
 - verify `br` / `bv` / `jq`;
-- optionally probe the index job with `index.sh --status --job <id>` when useful.
+- optionally probe the index job with `bash index.sh --status --job <id>` when useful.
 
 Do **not** use this window to broad-read the requirement body, project documentation, source tree, or discovery context. Those are Phase 1 responsibilities and should be parallelized through the four lane agents. Do not treat the background launch itself as successful Phase 0 evidence.
 

@@ -1,8 +1,8 @@
 # =============================================================================
-#  setup-gitnexus.ps1 — One-command GitNexus setup for fullstack projects
+#  install_window.ps1 — One-command planning-toolchain setup for fullstack project (Windows)s
 #
 #  Usage (run from project root):
-#    powershell -ExecutionPolicy Bypass -File setup-gitnexus.ps1
+#    powershell -ExecutionPolicy Bypass -File scripts/install_window.ps1
 #
 #  What this script does:
 #    1. Install gitnexus@latest globally (binary, not npx)

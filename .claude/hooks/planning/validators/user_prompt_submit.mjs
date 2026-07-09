@@ -41,7 +41,7 @@ export async function validateUserPromptSubmit(input, projectDir) {
       `  root_source: ${earlyIndex.rootSource}`,
       `  anchor_path: ${earlyIndex.anchorPath}`,
       "Keep Phase 0 bounded while indexing runs: perform required MCP/CLI health checks, target-scoped workspace setup, and minimal state evidence only. Do not broad-read requirement/code/project docs.",
-      `Before Phase 0 can complete, run: "$CLAUDE_PROJECT_DIR/.claude/hooks/planning/index.sh" --wait --job "${earlyIndex.jobId}"`,
+      `Before Phase 0 can complete, run: bash "$CLAUDE_PROJECT_DIR/.claude/hooks/planning/index.sh" --wait --job "${earlyIndex.jobId}"`,
       "Background job lifecycle metadata is authoritative only in .planning/state/planning-state-v2.json under phase_outputs.0.project_index_jobs; preserve that record when writing final Phase 0 evidence. Do not create or consult .planning/index-jobs/<job-id>/ files.",
       "FAIL-CLOSED: if that wait command exits non-zero, stop the planning pipeline immediately, report the indexing error, and do not mark Phase 0 completed or continue to discovery.",
       `After a successful wait and health checks, record Phase 0 evidence, set current_phase=1, and immediately spawn the three missing subagent discovery lanes (Patterns, Constraints, External) as background general-purpose agents using the exact ${DISCOVERY_CONTRACT_BEGIN} block from launch-discovery-agents.md; then run the Architecture lane in the main agent itself with GitNexus (query/context/impact/route_map/cypher) and write 1-architecture.md directly — never spawn an Architecture subagent. Do not pre-mark lanes running; record running only after accepted launch with verified identity.`,
@@ -55,7 +55,7 @@ export async function validateUserPromptSubmit(input, projectDir) {
   } else if (earlyIndex.status === "not_started") {
     lines.push(
       `EARLY PHASE 0 INDEX was not started safely: ${earlyIndex.error}`,
-      "Before broad requirement/code/project-doc reads, resolve the target immediately with resolve_index_root.mjs and start index.sh --target <resolved-root> --background. Keep Phase 0 bounded to health checks/evidence. On ambiguity/conflict, stop and request an explicit target path instead of falling back to a broad parent root.",
+      "Before broad requirement/code/project-doc reads, resolve the target immediately with resolve_index_root.mjs and start bash index.sh --target <resolved-root> --background (always invoke via bash; the script is tracked without an executable bit). Keep Phase 0 bounded to health checks/evidence. On ambiguity/conflict, stop and request an explicit target path instead of falling back to a broad parent root.",
     );
   }
 

@@ -838,7 +838,7 @@ async function validateBackgroundIndexEvidence(_projectDir, p0) {
   }
 
   if (p0.project_index_waited !== true || typeof record.collected_at !== "string" || !record.collected_at.trim()) {
-    return `Phase 0 background indexing job '${jobId}' was not collected. Run index.sh --wait --job '${jobId}' and only continue when it exits 0.`;
+    return `Phase 0 background indexing job '${jobId}' was not collected. Run bash .claude/hooks/planning/index.sh --wait --job '${jobId}' and only continue when it exits 0.`;
   }
 
   return null;

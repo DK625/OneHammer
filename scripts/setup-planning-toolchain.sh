@@ -14,7 +14,7 @@ FORCE_INSTALL="${GITNEXUS_FORCE_INSTALL:-0}"
 usage() {
   cat <<'EOF'
 Usage:
-  gitnexus/setup-gitnexus.sh [--analyze] [--force-install]
+  bash scripts/setup-planning-toolchain.sh [--analyze] [--force-install]
 
 Installs the Phase 0 planning CLIs (`br`, `bv`, GitNexus), initializes this
 repository's Beads workspace, and wires Claude Code settings to the standard

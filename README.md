@@ -24,11 +24,11 @@ Bộ **skills, hooks, và setup scripts** do OneHammer dùng thực chiến cho 
 
 ---
 
-## GitNexus Setup
+## Planning Toolchain Setup
 
 [GitNexus](https://www.npmjs.com/package/gitnexus) tạo knowledge graph cho codebase để Claude Code tra cứu symbol, function, class và dependency tốt hơn so với chỉ đọc file thủ công.
 
-Script trong `gitnexus/` tự động:
+Script trong `scripts/` tự động cài toolchain Phase 0 cho pipeline planning (br, bv, Beads workspace, GitNexus + hook, settings):
 
 - Cài `gitnexus@latest` global.
 - Chạy `gitnexus setup` và `gitnexus analyze`.
@@ -46,15 +46,15 @@ Yêu cầu:
 Cài/gỡ trên Linux hoặc macOS:
 
 ```bash
-bash gitnexus/install_linux.sh
-bash gitnexus/uninstall_linux.sh
+bash scripts/setup-planning-toolchain.sh
+bash scripts/uninstall_linux.sh
 ```
 
 Cài/gỡ trên Windows PowerShell:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File gitnexus/install_window.ps1
-powershell -ExecutionPolicy Bypass -File gitnexus/uninstall_window.ps1
+powershell -ExecutionPolicy Bypass -File scripts/install_window.ps1
+powershell -ExecutionPolicy Bypass -File scripts/uninstall_window.ps1
 ```
 
 Sau khi cài, restart Claude Code để reload MCP server.
