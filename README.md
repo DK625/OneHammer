@@ -18,7 +18,6 @@ Bộ **skills, hooks, và setup scripts** do OneHammer dùng thực chiến cho 
 | [Planning Skill](#planning-skill) | Claude Code skill | Pipeline lập kế hoạch feature theo phase, có artifact và gate |
 | [Planning Validator](#planning-validator) | Claude Code skill | Deep validation cho plan rủi ro cao |
 | [OneHammer Forge](#onehammer-forge) | Claude Code skill | Claim bead, implement, kiểm chứng runtime, handoff |
-| [Planning Guard Hook](#planning-guard-hook) | Claude Code hook | Enforce planning phase gates và artifact invariants |
 | [GPT Web Review](#gpt-web-review) | Claude Code skill | Gửi context sang ChatGPT web qua Oracle CLI, nhận raw response |
 | [GPT Web Fix Flow](#gpt-web-fix-flow) | Codex skill | Đóng gói context, gửi GPT Web, chờ zip trả về, apply có gate |
 
@@ -45,23 +44,6 @@ Một lệnh duy nhất sẽ:
 - Backup `settings.json`/`.mcp.json` cũ vào `.onehammer-backup/<timestamp>/` nếu nội dung khác.
 
 Chạy lại lần hai an toàn (idempotent): không duplicate hook, không phá `.beads`, giữ nguyên file không liên quan trong `scripts/` và `.claude/hooks/`.
-
-Tuỳ chọn:
-
-```bash
-# Chạy gitnexus analyze ngay sau khi cài
-curl -fsSL https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/install.sh | bash -s -- --analyze
-
-# Cài từ ref khác (branch/tag/commit)
-curl -fsSL https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/install.sh | bash -s -- --ref v1.0.0
-
-# Cài từ source nội bộ (GitPass) bằng SSH key sẵn có của bạn
-ONEHAMMER_SOURCE_REPO="git@git.paas.vn:devteam/onehammer-toolkit.git" \
-ONEHAMMER_SOURCE_REF="staging" \
-curl -fsSL https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/install.sh | bash
-```
-
-Biến môi trường hỗ trợ: `ONEHAMMER_SOURCE_REPO`, `ONEHAMMER_SOURCE_REF`, `ONEHAMMER_TARGET_DIR`, `ONEHAMMER_FORCE`, `ONEHAMMER_ANALYZE`. CLI flag luôn thắng biến môi trường.
 
 Gỡ cài đặt (chạy tại thư mục gốc của project):
 
@@ -104,15 +86,6 @@ curl -fsSL \
 ```bash
 curl -fsSL https://install.onehammer.bizflycloud.vn | bash
 ```
-
-### Kiểm thử installer
-
-```bash
-bash tests/install_smoke_test.sh
-bash tests/install_idempotency_test.sh
-```
-
-Hai test dựng source repo tạm từ working tree và target repo tạm, nên không đụng vào project thật. Test end-to-end thật là chạy đúng lệnh `curl | bash` public ở trên trong một repo mới.
 
 ---
 
@@ -187,29 +160,6 @@ Kích hoạt bằng `/onehammer:forge` hoặc `/onehammer:forge <bead-id>`.
 
 ---
 
-## Planning Guard Hook
-
-Hook entrypoint: `.claude/hooks/planning_guard.mjs`
-
-Hook chạy trong Claude Code để enforce planning pipeline:
-
-- `PreToolUse`: chặn thao tác sai phase hoặc ghi artifact quá sớm.
-- `PostToolUse`: kiểm tra artifact/schema/state sau từng bước.
-- Session/user/stop validators nằm trong `.claude/hooks/planning/validators/`.
-- State schema và helper lib nằm trong `.claude/hooks/planning/`.
-
-Cài sang project khác:
-
-```bash
-mkdir -p .claude/hooks
-cp /path/to/OneHammer/.claude/hooks/planning_guard.mjs .claude/hooks/
-cp -r /path/to/OneHammer/.claude/hooks/planning .claude/hooks/
-```
-
-Sau đó đăng ký hook trong `.claude/settings.json`. Xem thêm `.claude/hooks/planning/README.md`.
-
----
-
 ## GPT Web Review
 
 Path: `.claude/.skills/gpt-web-review`
@@ -269,9 +219,6 @@ OneHammer/
 ├── scripts/
 │   ├── install.sh
 │   └── uninstall.sh
-├── tests/
-│   ├── install_smoke_test.sh
-│   └── install_idempotency_test.sh
 ├── .claude/
 │   ├── settings.json
 │   ├── .skills/
