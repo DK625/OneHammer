@@ -2,8 +2,10 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  uninstall.sh — One-command GitNexus teardown for fullstack projects
 #
-#  Usage (run from project root):
-#    bash scripts/uninstall.sh
+#  Usage (run inside the target project's Git repository):
+#    curl -fsSL \
+#      https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/uninstall.sh \
+#      | bash
 #
 #  What this script does (reverse of install):
 #    1. Remove <!--gitnexus-->...<!--gitnexus:end--> block from CLAUDE.md
@@ -27,7 +29,10 @@ die()  { echo -e "${RED}  ✗${NC} $1"; exit 1; }
 step() { echo -e "\n${BOLD}── Step $1 ──────────────────────────────────────${NC}"; }
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+# The script is normally executed through stdin (curl | bash), so the target
+# is resolved from the current Git work tree, never from the script location.
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
+  || die "current directory is not inside a Git work tree"
 GLOBAL_MCP="$HOME/.mcp.json"
 GLOBAL_SETTINGS="$HOME/.claude/settings.json"
 GLOBAL_SKILLS_DIR="$HOME/.claude/skills/gitnexus"

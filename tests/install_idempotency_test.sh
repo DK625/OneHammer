@@ -52,10 +52,10 @@ POST_COUNT=$(jq '[.hooks.PostToolUse[]?.hooks[]? | select(.command | test("gitne
 [[ "$POST_COUNT" == "1" ]] || fail "expected exactly 1 gitnexus PostToolUse hook, got $POST_COUNT"
 pass "no duplicated gitnexus hooks"
 
-# No nested managed directories
+# No nested managed directories, no OneHammer scripts leaked into target
 [[ ! -e "$TARGET/.claude/skills/planning/planning" ]] || fail "nested planning/planning created"
-[[ ! -e "$TARGET/scripts/scripts" ]] || fail "nested scripts/scripts created"
-pass "no nested directories"
+[[ ! -e "$TARGET/scripts/install.sh" ]] || fail "installer must not copy scripts/ into the target"
+pass "no nested directories, no scripts leaked"
 
 jq empty "$TARGET/.claude/settings.json" || fail "settings.json corrupted"
 jq empty "$TARGET/.mcp.json" || fail ".mcp.json corrupted"

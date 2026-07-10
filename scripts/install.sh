@@ -16,7 +16,7 @@
 #    4. Validates all mandatory source paths BEFORE touching the target.
 #    5. Copies the project scaffold: .claude/hooks, the managed skills
 #       (planning, planning-validator, onehammer-forge), .claude/settings.json,
-#       .mcp.json, and scripts/ — backing up differing JSON configs.
+#       and .mcp.json — backing up differing JSON configs.
 #    6. Installs/wires the planning toolchain: br, bv, GitNexus, Beads
 #       workspace, and the user-level GitNexus hook (this logic used to live
 #       in scripts/setup-planning-toolchain.sh and is now inlined here).
@@ -254,7 +254,6 @@ validate_source() {
   [[ -d "$SRC_ROOT/.claude/hooks" ]]        || die "missing mandatory source path: .claude/hooks/"
   [[ -f "$SRC_ROOT/.claude/settings.json" ]] || die "missing mandatory source path: .claude/settings.json"
   [[ -f "$SRC_ROOT/.mcp.json" ]]            || die "missing mandatory source path: .mcp.json"
-  [[ -f "$SRC_ROOT/scripts/install.sh" ]]   || die "missing mandatory source path: scripts/install.sh"
 
   # Prefer .claude/skills/, fall back to .claude/.skills/
   if [[ -d "$SRC_ROOT/.claude/skills" ]]; then
@@ -317,13 +316,6 @@ install_scaffold() {
   # JSON configs: never silently destroy existing project configuration
   backup_if_different "$SRC_ROOT/.claude/settings.json" "$TARGET_ROOT/.claude/settings.json" ".claude/settings.json"
   backup_if_different "$SRC_ROOT/.mcp.json" "$TARGET_ROOT/.mcp.json" ".mcp.json"
-
-  # Scripts: merge, preserving unrelated target scripts
-  mkdir -p "$TARGET_ROOT/scripts"
-  cp -a "$SRC_ROOT/scripts/." "$TARGET_ROOT/scripts/"
-  chmod +x "$TARGET_ROOT/scripts/install.sh" 2>/dev/null || true
-  chmod +x "$TARGET_ROOT/scripts/uninstall.sh" 2>/dev/null || true
-  log "installed scripts/"
 }
 
 # ── Planning toolchain (formerly scripts/setup-planning-toolchain.sh) ────────
@@ -507,15 +499,13 @@ verify_installation() {
     "$TARGET_ROOT/.claude/skills/planning" \
     "$TARGET_ROOT/.claude/skills/planning-validator" \
     "$TARGET_ROOT/.claude/skills/onehammer-forge" \
-    "$TARGET_ROOT/scripts" \
     "$TARGET_ROOT/.beads"; do
     [[ -d "$path" ]] || die "verification failed, missing directory: $path"
   done
 
   for path in \
     "$TARGET_ROOT/.claude/settings.json" \
-    "$TARGET_ROOT/.mcp.json" \
-    "$TARGET_ROOT/scripts/install.sh"; do
+    "$TARGET_ROOT/.mcp.json"; do
     [[ -f "$path" ]] || die "verification failed, missing file: $path"
   done
 
@@ -534,7 +524,7 @@ print_summary() {
   log "target: $TARGET_ROOT"
   log "source: $SOURCE_REPO@$SOURCE_REF"
   log "source commit: $SOURCE_COMMIT"
-  log "installed: .claude/hooks, .claude/skills/{planning,planning-validator,onehammer-forge}, .claude/settings.json, .mcp.json, scripts/, .beads"
+  log "installed: .claude/hooks, .claude/skills/{planning,planning-validator,onehammer-forge}, .claude/settings.json, .mcp.json, .beads"
   log "br: $(command -v br)"
   log "bv: $(command -v bv)"
   log "jq: $(command -v jq)"

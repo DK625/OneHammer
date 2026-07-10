@@ -36,7 +36,7 @@ curl -fsSL \
 
 Một lệnh duy nhất sẽ:
 
-- Copy scaffold OneHammer vào project: `.claude/hooks/`, `.claude/skills/{planning,planning-validator,onehammer-forge}`, `.claude/settings.json`, `.mcp.json`, `scripts/`.
+- Copy scaffold OneHammer vào project: `.claude/hooks/`, `.claude/skills/{planning,planning-validator,onehammer-forge}`, `.claude/settings.json`, `.mcp.json`.
 - Tự cài `jq` nếu chưa có (package manager hoặc official binary có checksum).
 - Cài các CLI planning: `br`, `bv`, `gitnexus`, và khởi tạo Beads workspace (`.beads/`).
 - Wire hook GitNexus user-level (`~/.claude/hooks/gitnexus/`) vào `.claude/settings.json` của project.
@@ -61,10 +61,12 @@ curl -fsSL https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/inst
 
 Biến môi trường hỗ trợ: `ONEHAMMER_SOURCE_REPO`, `ONEHAMMER_SOURCE_REF`, `ONEHAMMER_TARGET_DIR`, `ONEHAMMER_FORCE`, `ONEHAMMER_ANALYZE`. CLI flag luôn thắng biến môi trường.
 
-Gỡ cài đặt:
+Gỡ cài đặt (chạy trong repo của project):
 
 ```bash
-bash scripts/uninstall.sh
+curl -fsSL \
+  https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/uninstall.sh \
+  | bash
 ```
 
 Sau khi cài, restart Claude Code để reload MCP server và project settings.

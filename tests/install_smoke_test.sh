@@ -49,7 +49,6 @@ for d in \
   "$TARGET/.claude/skills/planning" \
   "$TARGET/.claude/skills/planning-validator" \
   "$TARGET/.claude/skills/onehammer-forge" \
-  "$TARGET/scripts" \
   "$TARGET/.beads"; do
   [[ -d "$d" ]] || fail "missing directory: $d"
 done
@@ -57,12 +56,13 @@ pass "required directories exist"
 
 for f in \
   "$TARGET/.claude/settings.json" \
-  "$TARGET/.mcp.json" \
-  "$TARGET/scripts/install.sh" \
-  "$TARGET/scripts/uninstall.sh"; do
+  "$TARGET/.mcp.json"; do
   [[ -f "$f" ]] || fail "missing file: $f"
 done
 pass "required files exist"
+
+[[ ! -e "$TARGET/scripts/install.sh" ]] || fail "installer must not copy scripts/ into the target"
+pass "no OneHammer scripts copied into target"
 
 [[ ! -e "$TARGET/.claude/.skills" ]] || fail ".claude/.skills must not be created in target"
 [[ ! -e "$TARGET/.claude/skills/codex" ]] || fail "unmanaged skill 'codex' must not be copied"
