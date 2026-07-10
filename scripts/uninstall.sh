@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-#  uninstall-gitnexus.sh — One-command GitNexus teardown for fullstack projects
+#  uninstall.sh — One-command GitNexus teardown for fullstack projects
 #
 #  Usage (run from project root):
-#    bash uninstall-gitnexus.sh
+#    bash scripts/uninstall.sh
 #
 #  What this script does (reverse of install):
 #    1. Remove <!--gitnexus-->...<!--gitnexus:end--> block from CLAUDE.md
@@ -27,7 +27,7 @@ die()  { echo -e "${RED}  ✗${NC} $1"; exit 1; }
 step() { echo -e "\n${BOLD}── Step $1 ──────────────────────────────────────${NC}"; }
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 GLOBAL_MCP="$HOME/.mcp.json"
 GLOBAL_SETTINGS="$HOME/.claude/settings.json"
 GLOBAL_SKILLS_DIR="$HOME/.claude/skills/gitnexus"

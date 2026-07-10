@@ -13,7 +13,7 @@ Bộ **skills, hooks, và setup scripts** do OneHammer dùng thực chiến cho 
 
 | Thành phần | Loại | Mục đích |
 |---|---|---|
-| [GitNexus Setup](#gitnexus-setup) | Script cài/gỡ | Cài GitNexus, MCP config, hooks và project guidelines |
+| [One-command Installer](#cài-đặt-one-command) | Script cài/gỡ | Cài toàn bộ scaffold + toolchain (br, bv, jq, GitNexus, Beads) bằng một lệnh curl |
 | [Codex Review Skill](#codex-review-skill) | Claude Code skill | Gọi Codex làm reviewer thứ hai ngay trong terminal |
 | [Planning Skill](#planning-skill) | Claude Code skill | Pipeline lập kế hoạch feature theo phase, có artifact và gate |
 | [Planning Validator](#planning-validator) | Claude Code skill | Deep validation cho plan rủi ro cao |
@@ -24,40 +24,91 @@ Bộ **skills, hooks, và setup scripts** do OneHammer dùng thực chiến cho 
 
 ---
 
-## Planning Toolchain Setup
+## Cài đặt (one-command)
 
-[GitNexus](https://www.npmjs.com/package/gitnexus) tạo knowledge graph cho codebase để Claude Code tra cứu symbol, function, class và dependency tốt hơn so với chỉ đọc file thủ công.
-
-Script trong `scripts/` tự động cài toolchain Phase 0 cho pipeline planning (br, bv, Beads workspace, GitNexus + hook, settings):
-
-- Cài `gitnexus@latest` global.
-- Chạy `gitnexus setup` và `gitnexus analyze`.
-- Đưa MCP config về project scope trong `.mcp.json`.
-- Đưa Claude hooks về project scope trong `.claude/settings.json`.
-- Cài hook redirect Grep/Glob/Read sang Serena/GitNexus khi phù hợp.
-- Append workspace structure và technical guidelines vào `CLAUDE.md`.
-
-Yêu cầu:
-
-- Node.js + npm.
-- `jq` trên Linux/macOS.
-- Claude Code đã cài và hoạt động.
-
-Cài/gỡ trên Linux hoặc macOS:
+Đứng trong Git repository của project cần cài (Linux/WSL/macOS, cần sẵn `git`, `curl`, Node.js + npm), chạy:
 
 ```bash
-bash scripts/setup-planning-toolchain.sh
-bash scripts/uninstall_linux.sh
+curl -fsSL \
+  https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/install.sh \
+  | bash
 ```
 
-Cài/gỡ trên Windows PowerShell:
+Một lệnh duy nhất sẽ:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/install_window.ps1
-powershell -ExecutionPolicy Bypass -File scripts/uninstall_window.ps1
+- Copy scaffold OneHammer vào project: `.claude/hooks/`, `.claude/skills/{planning,planning-validator,onehammer-forge}`, `.claude/settings.json`, `.mcp.json`, `scripts/`.
+- Tự cài `jq` nếu chưa có (package manager hoặc official binary có checksum).
+- Cài các CLI planning: `br`, `bv`, `gitnexus`, và khởi tạo Beads workspace (`.beads/`).
+- Wire hook GitNexus user-level (`~/.claude/hooks/gitnexus/`) vào `.claude/settings.json` của project.
+- Backup `settings.json`/`.mcp.json` cũ vào `.onehammer-backup/<timestamp>/` nếu nội dung khác.
+
+Chạy lại lần hai an toàn (idempotent): không duplicate hook, không phá `.beads`, giữ nguyên file không liên quan trong `scripts/` và `.claude/hooks/`.
+
+Tuỳ chọn:
+
+```bash
+# Chạy gitnexus analyze ngay sau khi cài
+curl -fsSL https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/install.sh | bash -s -- --analyze
+
+# Cài từ ref khác (branch/tag/commit)
+curl -fsSL https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/install.sh | bash -s -- --ref v1.0.0
+
+# Cài từ source nội bộ (GitPass) bằng SSH key sẵn có của bạn
+ONEHAMMER_SOURCE_REPO="git@git.paas.vn:devteam/onehammer-toolkit.git" \
+ONEHAMMER_SOURCE_REF="staging" \
+curl -fsSL https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/install.sh | bash
 ```
 
-Sau khi cài, restart Claude Code để reload MCP server.
+Biến môi trường hỗ trợ: `ONEHAMMER_SOURCE_REPO`, `ONEHAMMER_SOURCE_REF`, `ONEHAMMER_TARGET_DIR`, `ONEHAMMER_FORCE`, `ONEHAMMER_ANALYZE`. CLI flag luôn thắng biến môi trường.
+
+Gỡ cài đặt:
+
+```bash
+bash scripts/uninstall.sh
+```
+
+Sau khi cài, restart Claude Code để reload MCP server và project settings.
+
+### Lộ trình phân phối installer
+
+**Giai đoạn hiện tại** — dùng raw GitHub, không cần domain riêng:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/install.sh \
+  | bash
+```
+
+**Khi chuẩn bị dùng ổn định trong công ty** — tạo tag để pin phiên bản:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/DK625/OneHammer/v1.0.0/scripts/install.sh \
+  | bash
+```
+
+**Khi muốn quy trình release chặt hơn** — dùng GitHub Release:
+
+```bash
+curl -fsSL \
+  https://github.com/DK625/OneHammer/releases/download/v1.0.0/onehammer-install.sh \
+  | bash
+```
+
+**Khi muốn URL đẹp, độc lập nền tảng** — gắn domain vào GitHub Pages:
+
+```bash
+curl -fsSL https://install.onehammer.bizflycloud.vn | bash
+```
+
+### Kiểm thử installer
+
+```bash
+bash tests/install_smoke_test.sh
+bash tests/install_idempotency_test.sh
+```
+
+Hai test dựng source repo tạm từ working tree và target repo tạm, nên không đụng vào project thật. Test end-to-end thật là chạy đúng lệnh `curl | bash` public ở trên trong một repo mới.
 
 ---
 
@@ -213,11 +264,12 @@ Runtime cases và alias `openclaw` được mô tả trong `.codex/skills/gpt-we
 ```text
 OneHammer/
 ├── README.md
-├── gitnexus/
-│   ├── install_linux.sh
-│   ├── install_window.ps1
-│   ├── uninstall_linux.sh
-│   └── uninstall_window.ps1
+├── scripts/
+│   ├── install.sh
+│   └── uninstall.sh
+├── tests/
+│   ├── install_smoke_test.sh
+│   └── install_idempotency_test.sh
 ├── .claude/
 │   ├── settings.json
 │   ├── .skills/
