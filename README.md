@@ -149,20 +149,18 @@ Pipeline planning bắt buộc cho feature có scope đáng kể. Luồng chuẩ
 
 | Phase | Kết quả chính |
 |---|---|
-| 0 | Pre-flight, kiểm tra dependencies và state |
-| 0.5 | Tạo workspace `history/<feature>/` |
-| 1 | Discovery 4 lane: Architecture, Patterns, Constraints, External |
-| 1.5 | Làm rõ business scope |
-| 1.6 | Làm rõ test scope và evidence |
+| 0 | Pre-flight: kiểm tra dependencies/state, chạy index nền, tạo workspace `history/<feature>/` |
+| 1 | Discovery 4 lane: Architecture, Patterns, Constraints do **main agent chạy trực tiếp** (GitNexus/Serena); External là **subagent duy nhất** (research bằng Exa/web) |
+| 1.5 | Làm rõ business scope (12 câu hỏi PO-style, 3 vòng x 4) |
+| 1.6 | Làm rõ test scope và evidence (8 câu hỏi, 2 vòng x 4) |
 | 2 | Tổng hợp approach |
 | 2.5 | Approval cho whole-feature phase plan |
 | 3 | Contract chi tiết cho từng phase |
 | 4 | Story map và approval cho decomposition |
 | 5 | Tạo beads thật bằng `br create` |
-| 7 | Validate graph và semantic readiness |
-| 8 | Xuất execution plan rồi dừng |
+| 7 | Validate graph và semantic readiness — điểm dừng bắt buộc của pipeline (execution chỉ bắt đầu khi user yêu cầu) |
 
-Artifacts chính nằm dưới `history/<feature>/`: `discovery.md`, `requirements.md`, `test-scenarios.md`, `approach.md`, `phase-plan.md`, `contracts/`, `story-maps/`, `execution-plan.md`.
+Artifacts chính nằm dưới `history/<feature>/`: `discovery-lanes/`, `discovery.md`, `requirements.md`, `test-scenarios.md`, `approach.md`, `phase-plan.md`, `contracts/`, `story-maps/`.
 
 ### Planning Validator
 
