@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  uninstall.sh — One-command GitNexus teardown for fullstack projects
 #
-#  Usage (run inside the target project's Git repository):
+#  Usage (run from the project root you want to clean up):
 #    curl -fsSL \
 #      https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/uninstall.sh \
 #      | bash
@@ -29,10 +29,9 @@ die()  { echo -e "${RED}  ✗${NC} $1"; exit 1; }
 step() { echo -e "\n${BOLD}── Step $1 ──────────────────────────────────────${NC}"; }
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-# The script is normally executed through stdin (curl | bash), so the target
-# is resolved from the current Git work tree, never from the script location.
-PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
-  || die "current directory is not inside a Git work tree"
+# The script is normally executed through stdin (curl | bash); it operates on
+# the current directory — run it from the project root.
+PROJECT_ROOT="$(pwd -P)"
 GLOBAL_MCP="$HOME/.mcp.json"
 GLOBAL_SETTINGS="$HOME/.claude/settings.json"
 GLOBAL_SKILLS_DIR="$HOME/.claude/skills/gitnexus"

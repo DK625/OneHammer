@@ -9,8 +9,8 @@
 #      | bash
 #
 #  What it does:
-#    1. Resolves the target Git project root (never trusts BASH_SOURCE —
-#       the script is normally executed through stdin).
+#    1. Installs into the CURRENT DIRECTORY (or --target/ONEHAMMER_TARGET_DIR
+#       when set) — run it from your project root.
 #    2. Checks prerequisites (git, curl, node, npm) and ensures jq.
 #    3. Shallow-clones the OneHammer source into a temp directory.
 #    4. Validates all mandatory source paths BEFORE touching the target.
@@ -25,7 +25,7 @@
 #  Environment overrides (CLI flags take precedence):
 #    ONEHAMMER_SOURCE_REPO  default https://github.com/DK625/OneHammer.git
 #    ONEHAMMER_SOURCE_REF   default master
-#    ONEHAMMER_TARGET_DIR   default <detected Git project root>
+#    ONEHAMMER_TARGET_DIR   default <current directory>
 #    ONEHAMMER_FORCE        default 0
 #    ONEHAMMER_ANALYZE      default 0
 # ─────────────────────────────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ Usage:
 Options:
   --source-repo <url>  Override toolkit repository
   --ref <ref>          Branch, tag, or commit to install
-  --target <path>      Override target project root
+  --target <path>      Override target project root (default: current directory)
   --analyze            Run gitnexus analyze after install
   --force              Reinstall managed CLIs and managed scaffold
   -h, --help           Show help
@@ -117,11 +117,11 @@ resolve_target_root() {
     [[ -d "$TARGET_DIR" ]] || die "target directory does not exist: $TARGET_DIR"
     TARGET_ROOT="$(cd "$TARGET_DIR" && pwd -P)"
   else
-    TARGET_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
-      || die "current directory is not inside a Git work tree; cd into your project or set ONEHAMMER_TARGET_DIR"
-    TARGET_ROOT="$(cd "$TARGET_ROOT" && pwd -P)"
+    # Install into the current directory — no Git-root resolution, what you
+    # stand in is what gets installed.
+    TARGET_ROOT="$(pwd -P)"
   fi
-  [[ -n "$TARGET_ROOT" ]] || die "resolved target root is empty"
+  [[ -n "$TARGET_ROOT" && "$TARGET_ROOT" != "/" ]] || die "refusing to install into: '$TARGET_ROOT'"
   log "target project: $TARGET_ROOT"
 }
 

@@ -26,13 +26,15 @@ Bộ **skills, hooks, và setup scripts** do OneHammer dùng thực chiến cho 
 
 ## Cài đặt (one-command)
 
-Đứng trong Git repository của project cần cài (Linux/WSL/macOS, cần sẵn `git`, `curl`, Node.js + npm), chạy:
+Đứng tại **thư mục gốc của project cần cài** (Linux/WSL/macOS, cần sẵn `git`, `curl`, Node.js + npm), chạy:
 
 ```bash
 curl -fsSL \
   https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/install.sh \
   | bash
 ```
+
+Installer cài **thẳng vào thư mục hiện tại (cwd)** — đứng ở đâu cài vào đó, không tự dò git root. Muốn cài vào nơi khác thì dùng `--target <path>` hoặc `ONEHAMMER_TARGET_DIR`.
 
 Một lệnh duy nhất sẽ:
 
@@ -61,7 +63,7 @@ curl -fsSL https://raw.githubusercontent.com/DK625/OneHammer/master/scripts/inst
 
 Biến môi trường hỗ trợ: `ONEHAMMER_SOURCE_REPO`, `ONEHAMMER_SOURCE_REF`, `ONEHAMMER_TARGET_DIR`, `ONEHAMMER_FORCE`, `ONEHAMMER_ANALYZE`. CLI flag luôn thắng biến môi trường.
 
-Gỡ cài đặt (chạy trong repo của project):
+Gỡ cài đặt (chạy tại thư mục gốc của project):
 
 ```bash
 curl -fsSL \
