@@ -22,6 +22,8 @@ Required order when `/planning` starts:
 
 `UserPromptSubmit` attempts step 1-3 automatically for explicit `/planning` invocations. When its injected context contains an early `job_id`, reuse that job; do not launch a duplicate. If no early job could be started safely, manually call the resolver and `index.sh` before any broad context reads.
 
+Resume skip: when the authoritative state already records Phase 0 `status=completed` for the SAME resolved target with collected index evidence (`project_index_ok=true`, and `project_index_waited=true` for background mode), the early-index hook does NOT start a new job (`EARLY PHASE 0 INDEX skipped` context). Re-queueing would flip `project_index_job_id`/`project_index_waited` onto a running job and retroactively invalidate completed Phase 0 evidence, blocking state writes. Resume from the current phase; if the index seems stale, run `bash index.sh --target <root> --background` manually and wait/collect it.
+
 ## Root Model: CONTROL_ROOT vs TARGET_INDEX_ROOT vs HISTORY_ROOT
 
 Keep these concepts separate throughout Phase 0:
@@ -33,14 +35,14 @@ HISTORY_ROOT      = TARGET_INDEX_ROOT when a target repo is selected;
                     otherwise CONTROL_ROOT for backward-compatible/default behavior
 ```
 
-`.planning/state/planning-state-v2.json` under `CONTROL_ROOT` is the single authoritative status/state file. No Markdown status mirror participates in Phase 0 or resume resolution.
+`.planning/state/planning-state-v2.json` under `HISTORY_ROOT` (the selected target repo) is the single authoritative status/state file — it lives next to `.planning/history/<feature>/`. Hooks and `index.sh` find it through the pointer file `CONTROL_ROOT/.planning/state/active-target-root`, which `resolve_index_root.mjs` / `index.sh` write automatically on successful target resolution. Without a selected target, the state file stays under `CONTROL_ROOT/.planning/state/`. No Markdown status mirror participates in Phase 0 or resume resolution.
 
 `CONTROL_ROOT` remains the lookup root for:
 
 ```text
 .claude/hooks/planning
 .claude/skills/planning
-.planning/state
+.planning/state/active-target-root   (pointer to the target repo)
 .mcp.json
 ```
 
@@ -51,13 +53,14 @@ uvx --from git+https://github.com/oraios/serena serena project index --log-level
 gitnexus analyze
 ```
 
-When `TARGET_INDEX_ROOT` is selected, human planning artifacts are also target-repo scoped:
+When `TARGET_INDEX_ROOT` is selected, human planning artifacts and state are target-repo scoped:
 
 ```text
-HISTORY_ROOT/history/<feature>/
+HISTORY_ROOT/.planning/history/<feature>/
+HISTORY_ROOT/.planning/state/planning-state-v2.json
 ```
 
-Therefore a broad Claude workspace must not keep the active feature workspace under its own `history/` when planning targets a nested repository.
+Therefore a broad Claude workspace must not keep the active feature workspace or state under its own `.planning/` when planning targets a nested repository.
 
 Concrete required behavior:
 
@@ -75,13 +78,21 @@ HISTORY_ROOT:
   /workspace/control/service-repo
 
 Feature workspace:
-  /workspace/control/service-repo/history/example-feature
+  /workspace/control/service-repo/.planning/history/example-feature
+
+State file:
+  /workspace/control/service-repo/.planning/state/planning-state-v2.json
+
+Pointer:
+  /workspace/control/.planning/state/active-target-root  ->  /workspace/control/service-repo
 ```
 
-The incorrect path for that case is:
+The incorrect paths for that case are:
 
 ```text
+/workspace/control/.planning/history/example-feature
 /workspace/control/history/example-feature
+/workspace/control/.planning/state/planning-state-v2.json  (as authoritative state)
 ```
 
 `CLAUDE_PROJECT_DIR` identifies the control root. It is **not** an implicit target-index or target-history root when a nested repository has been selected.
@@ -226,37 +237,37 @@ Once target resolution succeeds:
 
 ```bash
 HISTORY_ROOT="$TARGET_INDEX_ROOT"
-mkdir -p "$HISTORY_ROOT/history/<feature>"
+mkdir -p "$HISTORY_ROOT/.planning/history/<feature>"
 ```
 
 Record the canonical repo-relative planning path as:
 
 ```json
-"feature_path": "history/<feature>"
+"feature_path": ".planning/history/<feature>"
 ```
 
 `feature_path` stays relative for portability, but its resolution base is target-aware:
 
 ```text
 if phase_outputs."0".project_index_root is selected:
-  resolve history/<feature>/ under project_index_root
+  resolve .planning/history/<feature>/ under project_index_root
 
 otherwise:
-  resolve history/<feature>/ under CONTROL_ROOT / normal project root
+  resolve .planning/history/<feature>/ under CONTROL_ROOT / normal project root
 ```
 
-There is no separate workspace-preparation phase. Phase 0 is not complete until the target-repo-scoped `history/<feature>/` exists as a directory.
+There is no separate workspace-preparation phase. Phase 0 is not complete until the target-repo-scoped `.planning/history/<feature>/` exists as a directory.
 
 When `TARGET_INDEX_ROOT != CONTROL_ROOT`, do not use a relative Write/Edit path such as:
 
 ```text
-history/<feature>/discovery.md
+.planning/history/<feature>/discovery.md
 ```
 
 from the broad control workspace, because the tool may create it under the wrong root. Use the absolute target-repo path, for example:
 
 ```text
-/workspace/control/service-repo/history/example-feature/discovery.md
+/workspace/control/service-repo/.planning/history/example-feature/discovery.md
 ```
 
 The planning guard blocks active-feature relative history writes when a selected target repo differs from the control root.
@@ -289,7 +300,8 @@ Rules:
 Background job records live only in the single authoritative JSON state:
 
 ```text
-CONTROL_ROOT/.planning/state/planning-state-v2.json
+HISTORY_ROOT/.planning/state/planning-state-v2.json   (target repo; via the
+CONTROL_ROOT/.planning/state/active-target-root pointer)
   phase_outputs."0".project_index_jobs.<job-id>
 ```
 
@@ -304,7 +316,7 @@ When marking Phase 0 complete after a successful background collection, `phase_o
 ```json
 {
   "status": "completed",
-  "feature_path": "history/<feature>",
+  "feature_path": ".planning/history/<feature>",
   "mcp_json_checked": true,
   "mcp_servers_verified": ["serena", "exa", "gitnexus"],
   "serena_onboarding_checked": true,
@@ -350,9 +362,9 @@ and omit the background-only `project_index_job_id` / `project_index_waited` / `
 
 Evidence rules:
 
-- `feature_path` is target-repo-relative. It resolves to existing `<project_index_root>/history/<feature>/` when a target repo is selected; without a selected target repo it falls back to `<CONTROL_ROOT>/history/<feature>/`.
+- `feature_path` is target-repo-relative. It resolves to existing `<project_index_root>/.planning/history/<feature>/` when a target repo is selected; without a selected target repo it falls back to `<CONTROL_ROOT>/.planning/history/<feature>/`.
 - `project_index_root` is canonical `TARGET_INDEX_ROOT`, not the control root unless that root was safely derived or explicitly targeted.
-- `project_index_control_root` is canonical `CONTROL_ROOT`; it owns hook/skill/state lookup, not nested-target history.
+- `project_index_control_root` is canonical `CONTROL_ROOT`; it owns hook/skill/pointer lookup, not nested-target history or state.
 - `project_index_anchor_path` records the canonical source/directory anchor used to justify the target.
 - `project_index_root_source` records resolver provenance such as `source_path_nearest_git_root`, `source_path_nearest_serena_root`, `source_path_my_build_feature_fallback`, or `explicit_target_root`.
 - The four combined-index booleans (`project_index_ran`, `project_index_ok`, `serena_index_ok`, `gitnexus_index_ok`) must all be `true` only after terminal success is collected.
@@ -370,10 +382,10 @@ project_index_root:
   /workspace/control/service-repo
 
 required feature workspace:
-  /workspace/control/service-repo/history/example-feature
+  /workspace/control/service-repo/.planning/history/example-feature
 ```
 
-A decoy or stale directory at `/workspace/control/history/example-feature` does not satisfy the gate.
+A decoy or stale directory at `/workspace/control/.planning/history/example-feature` (or legacy `/workspace/control/history/example-feature`) does not satisfy the gate.
 
 ## Failure Behavior
 

@@ -25,6 +25,17 @@
             "statusMessage": "Planning guard: phase gate"
           }
         ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/compat_shim.mjs\"",
+            "timeout": 5,
+            "statusMessage": "Compat shim: strip invalid optional params (temporary — see compat_shim.mjs header)"
+          }
+        ]
       }
     ],
     "PostToolBatch": [

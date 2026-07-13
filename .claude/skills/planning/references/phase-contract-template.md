@@ -1,14 +1,14 @@
 # Phase Contract: Phase <N> - <Phase Name>
 
-Save to `history/<feature>/contracts/phase-<n>-contract.md`.
+Save to `.planning/history/<feature>/contracts/phase-<n>-contract.md`.
 
 **Date**: <YYYY-MM-DD>
 **Feature**: <feature-slug>
-**Phase Plan Reference**: `history/<feature>/phase-plan.md`
+**Phase Plan Reference**: `.planning/history/<feature>/phase-plan.md`
 **Based on**:
-- `history/<feature>/CONTEXT.md`
-- `history/<feature>/discovery.md`
-- `history/<feature>/approach.md`
+- `.planning/history/<feature>/CONTEXT.md`
+- `.planning/history/<feature>/discovery.md`
+- `.planning/history/<feature>/approach.md`
 
 ---
 

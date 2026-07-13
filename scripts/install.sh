@@ -15,7 +15,7 @@
 #    3. Shallow-clones the OneHammer source into a temp directory.
 #    4. Validates all mandatory source paths BEFORE touching the target.
 #    5. Copies the project scaffold: .claude/hooks, the managed skills
-#       (planning, planning-validator, onehammer-forge), .claude/settings.json,
+#       (planning, onehammer-forge), .claude/settings.json,
 #       and .mcp.json — backing up differing JSON configs.
 #    6. Installs/wires the planning toolchain: br, bv, GitNexus, Beads
 #       workspace, and the user-level GitNexus hook (this logic used to live
@@ -42,7 +42,7 @@ LOCAL_BIN="$HOME/.local/bin"
 USER_HOOK_DIR="${GITNEXUS_USER_HOOK_DIR:-$HOME/.claude/hooks/gitnexus}"
 USER_HOOK_FILE="$USER_HOOK_DIR/gitnexus-hook.cjs"
 
-MANAGED_SKILLS=(planning planning-validator onehammer-forge)
+MANAGED_SKILLS=(planning onehammer-forge)
 
 JQ_VERSION="1.7.1"
 JQ_BASE_URL="https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}"
@@ -497,7 +497,6 @@ verify_installation() {
   for path in \
     "$TARGET_ROOT/.claude/hooks" \
     "$TARGET_ROOT/.claude/skills/planning" \
-    "$TARGET_ROOT/.claude/skills/planning-validator" \
     "$TARGET_ROOT/.claude/skills/onehammer-forge" \
     "$TARGET_ROOT/.beads"; do
     [[ -d "$path" ]] || die "verification failed, missing directory: $path"
@@ -524,7 +523,7 @@ print_summary() {
   log "target: $TARGET_ROOT"
   log "source: $SOURCE_REPO@$SOURCE_REF"
   log "source commit: $SOURCE_COMMIT"
-  log "installed: .claude/hooks, .claude/skills/{planning,planning-validator,onehammer-forge}, .claude/settings.json, .mcp.json, .beads"
+  log "installed: .claude/hooks, .claude/skills/{planning,onehammer-forge}, .claude/settings.json, .mcp.json, .beads"
   log "br: $(command -v br)"
   log "bv: $(command -v bv)"
   log "jq: $(command -v jq)"

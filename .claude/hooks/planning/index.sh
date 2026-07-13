@@ -16,8 +16,16 @@ CONTROL_ROOT_RAW="${PLANNING_CONTROL_ROOT:-$DEFAULT_CONTROL_ROOT}"
 [[ -d "$CONTROL_ROOT_RAW" ]] || fail "control root does not exist or is not a directory: $CONTROL_ROOT_RAW"
 CONTROL_ROOT="$(cd -- "$CONTROL_ROOT_RAW" && pwd -P)"
 JOB_STATE_HELPER="$SCRIPT_DIR/lib/index_job_state.mjs"
-STATE_FILE="$CONTROL_ROOT/.planning/state/planning-state-v2.json"
 [[ -f "$JOB_STATE_HELPER" ]] || fail "background job state helper is missing: $JOB_STATE_HELPER"
+
+# The authoritative state lives under the target repo's .planning/state/ once the
+# active-target-root pointer exists; resolve lazily so logs show the real location.
+state_file_path() {
+  node --input-type=module -e '
+    const { stateFilePath } = await import(process.argv[2]);
+    process.stdout.write(stateFilePath(process.argv[1]));
+  ' "$CONTROL_ROOT" "file://$SCRIPT_DIR/lib/state.mjs"
+}
 
 usage() {
   cat <<'USAGE'
@@ -35,7 +43,9 @@ Behavior:
   --background starts the same combined index run asynchronously.
   --wait collects terminal state and propagates background failure.
   --status probes a job without waiting; a running job exits with status 3.
-  Background job metadata is stored only in .planning/state/planning-state-v2.json.
+  Background job metadata is stored only in the authoritative
+  <target-repo>/.planning/state/planning-state-v2.json (resolved through the
+  control root's .planning/state/active-target-root pointer).
 USAGE
 }
 
@@ -148,7 +158,7 @@ start_background() {
   local job_id
   job_id="$(new_job_id)"
   job_state queue --job "$job_id" --target "$target" --pid "$$" \
-    || fail "failed to create background job state in $STATE_FILE"
+    || fail "failed to create background job state in $(state_file_path)"
 
   nohup bash "$SCRIPT_DIR/index.sh" \
     --worker --target "$target" --job "$job_id" \
@@ -160,7 +170,7 @@ start_background() {
     fail "failed to publish background pid for job_id=$job_id"
   fi
 
-  log "started background job_id=$job_id pid=$pid target_root=$target state=$STATE_FILE"
+  log "started background job_id=$job_id pid=$pid target_root=$target state=$(state_file_path)"
   printf '%s\n' "$job_id"
 }
 
@@ -193,7 +203,7 @@ collect_job() {
 
   if ((rc != 0)); then
     show_failure_tail_from_json "$record_json"
-    log "background index failed job_id=$job_id exit_code=$rc target_root=$target state=$STATE_FILE"
+    log "background index failed job_id=$job_id exit_code=$rc target_root=$target state=$(state_file_path)"
     if ((rc > 125)); then
       exit 1
     fi
@@ -201,7 +211,7 @@ collect_job() {
   fi
 
   [[ "$status" == "succeeded" ]] || fail "job_id=$job_id exit_code=0 but status=${status:-<empty>}"
-  log "background index ok job_id=$job_id status=$status target_root=$target state=$STATE_FILE"
+  log "background index ok job_id=$job_id status=$status target_root=$target state=$(state_file_path)"
   return 0
 }
 

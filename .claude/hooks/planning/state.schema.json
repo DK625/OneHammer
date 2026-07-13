@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "planning-state-v2",
-  "description": "Single authoritative status/state schema for .planning/state/planning-state-v2.json used by planning_guard.mjs; no Markdown status mirror is required or consumed. Background Phase 0 index job metadata is also stored here under phase_outputs.0.project_index_jobs, so .planning/index-jobs job directories are not used. State remains under CONTROL_ROOT while relative history/... artifact paths resolve under the selected target repo (phase_outputs.0.project_index_root), falling back to the normal project root when no target is selected.",
+  "description": "Single authoritative status/state schema for .planning/state/planning-state-v2.json used by planning_guard.mjs; no Markdown status mirror is required or consumed. Background Phase 0 index job metadata is also stored here under phase_outputs.0.project_index_jobs, so .planning/index-jobs job directories are not used. The state file lives under the selected target repo's .planning/state/ (same root as .planning/history/<feature>), discovered by hooks through the CONTROL_ROOT/.planning/state/active-target-root pointer; without a selected target it stays under the normal project/control root. Relative .planning/... (and legacy history/...) artifact paths resolve under the selected target repo (phase_outputs.0.project_index_root).",
   "type": "object",
   "required": [
     "feature",
@@ -31,7 +31,10 @@
         },
         "owner": {
           "type": "string",
-          "enum": ["main-agent", "subagent"],
+          "enum": [
+            "main-agent",
+            "subagent"
+          ],
           "description": "Lane execution owner. The Architecture, Patterns, and Constraints lanes are main-agent-owned (GitNexus/Serena-direct, no subagent, no launch identity); the External lane is subagent-owned."
         },
         "agent_id": {
@@ -74,15 +77,32 @@
         {
           "if": {
             "properties": {
-              "status": { "const": "running" }
+              "status": {
+                "const": "running"
+              }
             },
-            "required": ["status"]
+            "required": [
+              "status"
+            ]
           },
           "then": {
             "anyOf": [
-              { "required": ["agent_id"] },
-              { "required": ["launch_id"] },
-              { "required": ["attempt_id", "launch_confirmed_at"] }
+              {
+                "required": [
+                  "agent_id"
+                ]
+              },
+              {
+                "required": [
+                  "launch_id"
+                ]
+              },
+              {
+                "required": [
+                  "attempt_id",
+                  "launch_confirmed_at"
+                ]
+              }
             ]
           }
         }
@@ -148,7 +168,7 @@
   "properties": {
     "schema_version": {
       "type": "string",
-      "description": "Target schema version. 'v2' = canonical phases 0, 1, 1.5, 1.6, 2, 2.5, 3, 4, 5, 7; Phase 0 owns feature-workspace setup and Phase 7 is terminal.",
+      "description": "Target schema version. 'v2' = canonical phases 0, 1, 1.5, 1.6, 2, 2.5, 3, 4, 5, 6; Phase 0 owns feature-workspace setup and Phase 6 is terminal.",
       "examples": [
         "v2",
         "v2-phase-2.5-approval-gate"
@@ -174,7 +194,7 @@
         "string",
         "null"
       ],
-      "description": "Phase id. Valid values: 0, 1, 1.5, 1.6, 2, 2.5, 3, 4, 5, 7. Legacy values 4.5, 4.6 trigger legacy mode."
+      "description": "Phase id. Valid values: 0, 1, 1.5, 1.6, 2, 2.5, 3, 4, 5, 6. Legacy values 4.5, 4.6 trigger legacy mode."
     },
     "completed_phases": {
       "type": "array",
@@ -237,7 +257,7 @@
     },
     "phase_outputs": {
       "type": "object",
-      "description": "Per-phase output records. Canonical keys are phase ids (0, 1, 1.5, 1.6, 2, 2.5, 3, 4, 5, 7) plus named approval/handoff records.",
+      "description": "Per-phase output records. Canonical keys are phase ids (0, 1, 1.5, 1.6, 2, 2.5, 3, 4, 5, 6) plus named approval/handoff records.",
       "additionalProperties": {
         "type": "object",
         "properties": {
@@ -312,12 +332,12 @@
             "project_index_root": {
               "type": "string",
               "minLength": 1,
-              "description": "Canonical absolute selected target repository root used for the automatic combined Serena + GitNexus index run and, when present, as HISTORY_ROOT for relative history/... planning artifacts."
+              "description": "Canonical absolute selected target repository root used for the automatic combined Serena + GitNexus index run and, when present, as HISTORY_ROOT for relative .planning/... (and legacy history/...) planning artifacts."
             },
             "project_index_control_root": {
               "type": "string",
               "minLength": 1,
-              "description": "Canonical absolute CONTROL_ROOT used for hook, skill, authoritative state, and .mcp.json lookup. It is not the history root when a different target repository is selected."
+              "description": "Canonical absolute CONTROL_ROOT used for hook, skill, .mcp.json, and active-target-root pointer lookup. It is not the history/state root when a different target repository is selected."
             },
             "project_index_anchor_path": {
               "type": "string",
@@ -364,11 +384,11 @@
             },
             "feature_path": {
               "type": "string",
-              "description": "Repo-relative feature workspace path; must be history/<feature> and resolve under project_index_root when a target repo is selected, otherwise under the normal project/control root."
+              "description": "Repo-relative feature workspace path; must be .planning/history/<feature> and resolve under project_index_root when a target repo is selected, otherwise under the normal project/control root."
             },
             "requirement_source_path": {
               "type": "string",
-              "description": "Canonical requirement source currently used by planning. Relative history/... values are target-repo scoped; other relative values retain normal project/control-root resolution."
+              "description": "Canonical requirement source currently used by planning. Relative .planning/... (and legacy history/...) values are target-repo scoped; other relative values retain normal project/control-root resolution."
             },
             "timestamp": {
               "type": "string"
@@ -587,6 +607,13 @@
             },
             "timestamp": {
               "type": "string"
+            },
+            "approval": {
+              "type": "string",
+              "enum": [
+                "auto"
+              ],
+              "description": "Phase 2.5 is auto-approved when phase-plan.md is written; no AskUserQuestion is asked. Legacy states use approval_response instead."
             }
           }
         },
@@ -702,39 +729,18 @@
             }
           }
         },
-        "7": {
+        "6": {
           "type": "object",
           "properties": {
             "status": {
               "type": "string"
             },
-            "validation_mode": {
-              "type": "string",
-              "enum": [
-                "mechanical_lite",
-                "targeted",
-                "full"
-              ]
-            },
             "cycles_found": {
               "type": "number"
             },
-            "semantic_verdict": {
+            "beads_manifest_path": {
               "type": "string",
-              "enum": [
-                "READY",
-                "READY_LITE",
-                "READY_TARGETED",
-                "ESCALATE_FULL",
-                "BLOCKED",
-                "NEEDS-REVISION"
-              ]
-            },
-            "validator_invocation_id": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "description": "Repo-relative path of the beads-manifest.json written by materialize_beads.mjs in Phase 5."
             },
             "timestamp": {
               "type": "string"

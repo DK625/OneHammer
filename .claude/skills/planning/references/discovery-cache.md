@@ -1,6 +1,6 @@
 # Feature-Scoped Discovery Setup (Phase 0 → Phase 1)
 
-Phase 0 already ensures target-repo-scoped `history/<feature>/` exists under `HISTORY_ROOT` (`phase_outputs.0.project_index_root`, fallback normal project root only when no target is selected). Resolve every relative path in this reference against `HISTORY_ROOT`. Do not delay a fresh Phase 1 launch to read broad context: after Phase 0 succeeds, spawn the missing External discovery lane immediately (one Agent call in its own message), then run the three main-agent lanes (Architecture, Patterns, Constraints) with GitNexus/Serena. Use this reference when verifying existing lane coverage and when compiling `discovery.md` from the lane files.
+Phase 0 already ensures target-repo-scoped `.planning/history/<feature>/` exists under `HISTORY_ROOT` (`phase_outputs.0.project_index_root`, fallback normal project root only when no target is selected). Resolve every relative path in this reference against `HISTORY_ROOT`. Do not delay a fresh Phase 1 launch to read broad context: after Phase 0 succeeds, spawn the missing External discovery lane immediately (one Agent call in its own message), then run the three main-agent lanes (Architecture, Patterns, Constraints) with GitNexus/Serena. Use this reference when verifying existing lane coverage and when compiling `discovery.md` from the lane files.
 
 ## Key Principle
 
@@ -12,12 +12,12 @@ This repository already has live code-intelligence indexes (Serena + GitNexus). 
 - and regenerated/updated per feature.
 
 Use:
-- `history/<feature>/discovery.md`
-- `history/<feature>/discovery-lanes/*.md`
+- `.planning/history/<feature>/discovery.md`
+- `.planning/history/<feature>/discovery-lanes/*.md`
 
 ## Decision Flow
 
-### If `history/<feature>/discovery.md` exists
+### If `.planning/history/<feature>/discovery.md` exists
 
 ```text
 ✅ Feature discovery exists.
@@ -33,7 +33,7 @@ Minimum refresh checks (4 orthogonal dimensions):
 
 Within each dimension, honor the active repository/project instructions and discovered topology. Do not assume fixed backend/frontend folders. When multiple components or repositories are involved, sweep every relevant surface, report the contract provider/source-of-truth first, then downstream consumer impact; state any intentionally skipped surface and why.
 
-### If `history/<feature>/discovery.md` does NOT exist
+### If `.planning/history/<feature>/discovery.md` does NOT exist
 
 ```text
 ⏳ No feature discovery found. Running Phase 1 discovery lanes...
@@ -45,19 +45,19 @@ Proceed to Phase 1 and generate all lane artifacts.
 
 Each `general-purpose` lane agent writes its own full detailed, non-summary canonical file directly:
 
-- `history/<feature>/discovery-lanes/1-architecture.md`
-- `history/<feature>/discovery-lanes/2-patterns.md`
-- `history/<feature>/discovery-lanes/3-constraints.md`
-- `history/<feature>/discovery-lanes/4-external.md`
+- `.planning/history/<feature>/discovery-lanes/1-architecture.md`
+- `.planning/history/<feature>/discovery-lanes/2-patterns.md`
+- `.planning/history/<feature>/discovery-lanes/3-constraints.md`
+- `.planning/history/<feature>/discovery-lanes/4-external.md`
 
 After all four lane files exist, the main agent reads them as sufficient context by default, self-fills only a specific remaining gap when necessary, and compiles:
-- `history/<feature>/discovery.md`
+- `.planning/history/<feature>/discovery.md`
 
 Do not copy background response bodies into lane files and do not replace lane artifacts with main-agent summaries.
 
 ## Discovery synthesis template (minimum)
 
-`history/<feature>/discovery.md` should contain:
+`.planning/history/<feature>/discovery.md` should contain:
 
 ```markdown
 # Feature Discovery: <feature>
@@ -84,6 +84,6 @@ Do not copy background response bodies into lane files and do not replace lane a
 
 ## Notes
 
-- Avoid introducing `history/full-project-discovery/` as required source-of-truth.
+- Avoid introducing `.planning/history/full-project-discovery/` as required source-of-truth.
 - Use indexes as truth, markdown as feature-specific snapshot for planning handoff.
 - Keep discovery compact and current to this feature only.

@@ -3,9 +3,9 @@
 **Date**: <YYYY-MM-DD>
 **Feature**: <feature-slug>
 **Based on**:
-- `history/<feature>/CONTEXT.md`
-- `history/<feature>/discovery.md`
-- `history/<feature>/approach.md`
+- `.planning/history/<feature>/CONTEXT.md`
+- `.planning/history/<feature>/discovery.md`
+- `.planning/history/<feature>/approach.md`
 
 ## Readability Guardrails (must follow)
 

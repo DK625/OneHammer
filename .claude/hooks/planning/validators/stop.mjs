@@ -25,11 +25,11 @@ export async function validateStop(input, projectDir) {
     );
   }
 
-  if (String(state.current_phase ?? "") === "2" && state.phase_plan_approved !== true && PREMATURE_PAUSE_RE.test(msg)) {
+  if (["2", "2.5"].includes(String(state.current_phase ?? "")) && state.phase_plan_approved !== true && PREMATURE_PAUSE_RE.test(msg)) {
     return topLevelBlock(
-      `Planning phase 2 is in progress and should continue directly to Phase 2.5 approval prep. ` +
+      `Planning phase ${state.current_phase} is in progress and should continue straight through auto-approved Phase 2.5 into Phase 3. ` +
       `Detected premature confirmation pause language in the last assistant message. ` +
-      `Continue by producing approach.md and phase-plan.md, then pause only at the Phase 2.5 AskUserQuestion approval prompt.`,
+      `Continue by producing approach.md and phase-plan.md, setting phase_plan_approved=true (Phase 2.5 is auto-approved; no approval question), then pause only at the Phase 4 whole-set approval AskUserQuestion.`,
     );
   }
 
@@ -48,11 +48,11 @@ export async function validateStop(input, projectDir) {
     p4Approval.approved === true &&
     p4Approval.approval_response === "Approve";
 
-  if (["5", "7"].includes(String(state.current_phase ?? "")) && phase4Approved && PREMATURE_PAUSE_RE.test(msg)) {
+  if (["5", "6"].includes(String(state.current_phase ?? "")) && phase4Approved && PREMATURE_PAUSE_RE.test(msg)) {
     return topLevelBlock(
-      `After Phase 4 Approve, planning must continue in one run through Phase 5 and Phase 7. ` +
-      `Detected premature confirmation pause language before the terminal Phase 7 readiness gate. ` +
-      `Continue by finishing decomposition and validation; stop planning only after Phase 7 records a READY* verdict and planning_active=false.`,
+      `After Phase 4 Approve, planning must continue in one run through Phase 5 and Phase 6. ` +
+      `Detected premature confirmation pause language before the terminal Phase 6 readiness gate. ` +
+      `Continue by finishing script-based bead materialization and graph validation; stop planning only after Phase 6 records cycles_found=0 and planning_active=false.`,
     );
   }
 

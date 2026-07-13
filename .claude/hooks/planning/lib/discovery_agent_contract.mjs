@@ -33,7 +33,7 @@ const REQUIRED_STATIC_FIELDS = Object.freeze({
   delivery: "direct_canonical_markdown_file",
   detail: "full_detailed_non_summary",
   write_scope: "canonical_lane_file_only",
-  forbid: ".planning/,planning-state-v2.json,discovery.md,other_lane_files",
+  forbid: ".planning/state/,planning-state-v2.json,discovery.md,other_lane_files",
   main_agent_owns: "read_verify_lane_files,compile_discovery_md,manage_planning_state",
   handoff: "canonical_file_not_background_response_body",
   topology: "read_active_repo_project_instructions,discover_actual_topology,provider_source_of_truth_before_dependent_consumer_impact",
@@ -47,7 +47,7 @@ export function discoveryLaneById(id) {
 export function canonicalDiscoveryArtifact(laneId, feature) {
   const lane = discoveryLaneById(laneId);
   if (!lane) return null;
-  return `history/${feature || "<feature>"}/discovery-lanes/${lane.filename}`;
+  return `.planning/history/${feature || "<feature>"}/discovery-lanes/${lane.filename}`;
 }
 
 export function renderDiscoveryContractBlock(laneId, feature) {

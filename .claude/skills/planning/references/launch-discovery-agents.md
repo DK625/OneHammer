@@ -61,7 +61,7 @@ They never become `running` with a launch identity. Write the canonical file, th
 After Phase 0 is valid:
 
 1. Derive `HISTORY_ROOT` from `phase_outputs.0.project_index_root`; only use normal project/control root when no target repo exists.
-2. Ensure `HISTORY_ROOT/history/<feature>/discovery-lanes/` exists.
+2. Ensure `HISTORY_ROOT/.planning/history/<feature>/discovery-lanes/` exists.
 3. Determine lane coverage from canonical files plus `phase_outputs.1.lanes`.
 4. If the External lane is `missing`/`failed`/`orphaned`, launch it immediately — exactly one Agent call in its own message (a multi-call batch risks tool-call truncation that drops `subagent_type`/`run_in_background` or cuts the contract block mid-line).
 5. Treat External `running` as non-retryable only when it carries a verified launch identity.
@@ -108,12 +108,12 @@ The External Agent prompt must contain exactly one block with these markers and 
 ```text
 [PLANNING_DISCOVERY_AGENT_CONTRACT_V1]
 lane=external
-artifact=history/<feature>/discovery-lanes/4-external.md
+artifact=.planning/history/<feature>/discovery-lanes/4-external.md
 requirement_input=provided_requirement_source_or_current_request
 delivery=direct_canonical_markdown_file
 detail=full_detailed_non_summary
 write_scope=canonical_lane_file_only
-forbid=.planning/,planning-state-v2.json,discovery.md,other_lane_files
+forbid=.planning/state/,planning-state-v2.json,discovery.md,other_lane_files
 main_agent_owns=read_verify_lane_files,compile_discovery_md,manage_planning_state
 handoff=canonical_file_not_background_response_body
 topology=read_active_repo_project_instructions,discover_actual_topology,provider_source_of_truth_before_dependent_consumer_impact
@@ -142,7 +142,7 @@ Agent(
   name="phase1-external",
   subagent_type="general-purpose",
   description="External discovery lane — <feature>",
-  prompt="Research external knowledge for feature <feature>: design patterns, best practices, API docs, and library references. Read requirement source/current request: <REQUIREMENT_SOURCE_PATH_OR_CURRENT_REQUEST>. Use Exa/web research as primary tools when available.\n\n[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\nlane=external\nartifact=history/<feature>/discovery-lanes/4-external.md\nrequirement_input=provided_requirement_source_or_current_request\ndelivery=direct_canonical_markdown_file\ndetail=full_detailed_non_summary\nwrite_scope=canonical_lane_file_only\nforbid=.planning/,planning-state-v2.json,discovery.md,other_lane_files\nmain_agent_owns=read_verify_lane_files,compile_discovery_md,manage_planning_state\nhandoff=canonical_file_not_background_response_body\ntopology=read_active_repo_project_instructions,discover_actual_topology,provider_source_of_truth_before_dependent_consumer_impact\nbrowser_runbook_candidates=durable_ui_route_login_selector_state_cues\n[/PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\n\nWrite the full lane artifact directly to <HISTORY_ROOT>/history/<feature>/discovery-lanes/4-external.md. Read active repo/project instructions and discover actual topology before conclusions. Include scope, recommendations, sources mapped to product/architecture decisions, source links/doc names, provider/source-of-truth before dependent consumer impact when cross-surface, Browser Runbook candidates for durable UI route/login/selector/state cues, risks, constraints, gaps, and open questions. Preserve evidence and reasoning; do not compress to a short recap. If external research is not applicable, document that determination and evidence instead of skipping the lane. Write only this lane file. The main agent owns discovery.md and planning state.",
+  prompt="Research external knowledge for feature <feature>: design patterns, best practices, API docs, and library references. Read requirement source/current request: <REQUIREMENT_SOURCE_PATH_OR_CURRENT_REQUEST>. Use Exa/web research as primary tools when available.\n\n[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\nlane=external\nartifact=.planning/history/<feature>/discovery-lanes/4-external.md\nrequirement_input=provided_requirement_source_or_current_request\ndelivery=direct_canonical_markdown_file\ndetail=full_detailed_non_summary\nwrite_scope=canonical_lane_file_only\nforbid=.planning/state/,planning-state-v2.json,discovery.md,other_lane_files\nmain_agent_owns=read_verify_lane_files,compile_discovery_md,manage_planning_state\nhandoff=canonical_file_not_background_response_body\ntopology=read_active_repo_project_instructions,discover_actual_topology,provider_source_of_truth_before_dependent_consumer_impact\nbrowser_runbook_candidates=durable_ui_route_login_selector_state_cues\n[/PLANNING_DISCOVERY_AGENT_CONTRACT_V1]\n\nWrite the full lane artifact directly to <HISTORY_ROOT>/.planning/history/<feature>/discovery-lanes/4-external.md. Read active repo/project instructions and discover actual topology before conclusions. Include scope, recommendations, sources mapped to product/architecture decisions, source links/doc names, provider/source-of-truth before dependent consumer impact when cross-surface, Browser Runbook candidates for durable UI route/login/selector/state cues, risks, constraints, gaps, and open questions. Preserve evidence and reasoning; do not compress to a short recap. If external research is not applicable, document that determination and evidence instead of skipping the lane. Write only this lane file. The main agent owns discovery.md and planning state.",
   run_in_background=true
 )
 ```
@@ -170,10 +170,10 @@ Rate-limit blocks remain separately controlled by `blocked_rate_limit` and `retr
 Do not start Phase 1.5 until all four canonical files exist and are evidence-dense, non-error outputs:
 
 ```text
-history/<feature>/discovery-lanes/1-architecture.md
-history/<feature>/discovery-lanes/2-patterns.md
-history/<feature>/discovery-lanes/3-constraints.md
-history/<feature>/discovery-lanes/4-external.md
+.planning/history/<feature>/discovery-lanes/1-architecture.md
+.planning/history/<feature>/discovery-lanes/2-patterns.md
+.planning/history/<feature>/discovery-lanes/3-constraints.md
+.planning/history/<feature>/discovery-lanes/4-external.md
 ```
 
 Do not treat idle/availability notifications as lane content. Do not use a side channel to retrieve response bodies. Check the canonical files.
@@ -185,18 +185,18 @@ Once all four files exist:
 1. Read all four canonical files.
 2. Verify evidence/detail/topology/risk/gap coverage.
 3. Self-fill only a specific remaining gap when necessary; do not redo broad discovery.
-4. Compile `history/<feature>/discovery.md`.
+4. Compile `.planning/history/<feature>/discovery.md`.
 5. Record completed lane statuses and artifacts in the authoritative JSON state.
 
 Example completion ledger:
 
 ```json
 "lanes": {
-  "architecture": { "status": "completed", "owner": "main-agent", "artifact_path": "history/<feature>/discovery-lanes/1-architecture.md" },
-  "patterns": { "status": "completed", "owner": "main-agent", "artifact_path": "history/<feature>/discovery-lanes/2-patterns.md" },
-  "constraints": { "status": "completed", "owner": "main-agent", "artifact_path": "history/<feature>/discovery-lanes/3-constraints.md" },
-  "external": { "status": "completed", "agent_name": "phase1-external", "artifact_path": "history/<feature>/discovery-lanes/4-external.md" }
+  "architecture": { "status": "completed", "owner": "main-agent", "artifact_path": ".planning/history/<feature>/discovery-lanes/1-architecture.md" },
+  "patterns": { "status": "completed", "owner": "main-agent", "artifact_path": ".planning/history/<feature>/discovery-lanes/2-patterns.md" },
+  "constraints": { "status": "completed", "owner": "main-agent", "artifact_path": ".planning/history/<feature>/discovery-lanes/3-constraints.md" },
+  "external": { "status": "completed", "agent_name": "phase1-external", "artifact_path": ".planning/history/<feature>/discovery-lanes/4-external.md" }
 }
 ```
 
-The main agent owns `.planning/state/planning-state-v2.json`. Lane agents must never modify it.
+The main agent owns `HISTORY_ROOT/.planning/state/planning-state-v2.json`. Lane agents must never modify it, the active-target-root pointer, or anything else under `.planning/state/`.

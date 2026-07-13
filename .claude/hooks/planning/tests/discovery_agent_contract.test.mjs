@@ -128,8 +128,8 @@ test("canonical block with wrong lane artifact fails", () => {
   const external = DISCOVERY_LANES.find((lane) => lane.id === "external");
   const toolInput = canonicalAgentInput(external);
   toolInput.prompt = toolInput.prompt.replace(
-    "artifact=history/feature-x/discovery-lanes/4-external.md",
-    "artifact=history/feature-x/discovery-lanes/2-patterns.md",
+    "artifact=.planning/history/feature-x/discovery-lanes/4-external.md",
+    "artifact=.planning/history/feature-x/discovery-lanes/2-patterns.md",
   );
   const issues = validateDiscoveryAgentPromptContract(toolInput, external, "feature-x");
   assert.ok(issues.some((issue) => issue.includes("contract artifact must be")));
@@ -216,7 +216,7 @@ test("existing canonical artifact suppresses duplicate launch even with failed l
   await writeState(control, {
     external: { status: "failed" },
   });
-  const artifact = join(control, "history", "feature-x", "discovery-lanes", "4-external.md");
+  const artifact = join(control, ".planning", "history", "feature-x", "discovery-lanes", "4-external.md");
   await mkdir(dirname(artifact), { recursive: true });
   await writeFile(artifact, "# External\n\nDetailed evidence\n");
 

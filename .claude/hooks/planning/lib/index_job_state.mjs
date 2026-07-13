@@ -3,7 +3,7 @@
 import { open, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { stateFilePath, withStateLock } from "./state.mjs";
+import { stateFilePath, withStateLock, writeActiveTargetRoot } from "./state.mjs";
 
 const SAFE_JOB_ID_RE = /^[A-Za-z0-9._-]+$/;
 const ACTIVE_STATUSES = new Set(["queued", "running"]);
@@ -174,6 +174,9 @@ async function commandQueue(controlRoot, args) {
   const targetRoot = requireString(args, "target");
   const pid = parsePid(args.pid, "launcher pid");
   const queuedAt = nowIso();
+  // Refresh the pointer before touching state so the job record (and every later
+  // state read) lands in the target repo's .planning/state/, not CONTROL_ROOT's.
+  writeActiveTargetRoot(controlRoot, targetRoot);
   await mutateState(controlRoot, async (_state, p0) => {
     p0.project_index_execution_mode = "background";
     p0.project_index_job_id = jobId;

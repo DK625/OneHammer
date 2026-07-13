@@ -27,6 +27,8 @@ For every FE-involving mode (`fullstack`, `fe-only`), use `agent-browser` E2E, c
 
 Phase 1.6 still follows the strict pipeline gate: **exactly 8 questions in 2 rounds, 4 questions per round**.
 
+Language and recommendation convention (same as Phase 1.5): write question text, option labels, and option descriptions in Vietnamese (keep technical terms like `fullstack`/`fe-only`/`be-only`, screenshot, curl in English). Put your recommended option FIRST with the label suffix ` (Khuyến nghị)` and a one-sentence description of why it fits this feature.
+
 Required question themes across 2 rounds:
 1. Feature test mode classification: `fullstack`, `fe-only`, or `be-only`.
 2. Golden path proof and failure-path proof.
@@ -116,7 +118,7 @@ curl -X PUT "http://localhost:8000/api/endpoint" \
 - Do not create feature-specific runbook files; keep durable route/login/selector/state discoveries in the single lessons runbook.
 ```
 
-**Save test scenarios to:** `history/<feature>/test-scenarios.md`
+**Save test scenarios to:** `.planning/history/<feature>/test-scenarios.md`
 
 ## Bead linkage note
 

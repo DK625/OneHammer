@@ -29,7 +29,7 @@ export async function validateUserPromptSubmit(input, projectDir) {
   const lines = ["[planning-guard]"];
   if (looksPlanning) {
     lines.push(
-      "This prompt looks like a planning request. Invoke skill `planning` — it enforces the canonical pipeline through Phase 7 with approvals at 2.5 and 4.",
+      "This prompt looks like a planning request. Invoke skill `planning` — it enforces the canonical pipeline through Phase 6 with approvals at 2.5 and 4.",
     );
   }
 
@@ -42,9 +42,15 @@ export async function validateUserPromptSubmit(input, projectDir) {
       `  anchor_path: ${earlyIndex.anchorPath}`,
       "Keep Phase 0 bounded while indexing runs: perform required MCP/CLI health checks, target-scoped workspace setup, and minimal state evidence only. Do not broad-read requirement/code/project docs.",
       `Before Phase 0 can complete, run: bash "$CLAUDE_PROJECT_DIR/.claude/hooks/planning/index.sh" --wait --job "${earlyIndex.jobId}"`,
-      "Background job lifecycle metadata is authoritative only in .planning/state/planning-state-v2.json under phase_outputs.0.project_index_jobs; preserve that record when writing final Phase 0 evidence. Do not create or consult .planning/index-jobs/<job-id>/ files.",
+      "Background job lifecycle metadata is authoritative only in the target repo's .planning/state/planning-state-v2.json (resolved through CONTROL_ROOT/.planning/state/active-target-root) under phase_outputs.0.project_index_jobs; preserve that record when writing final Phase 0 evidence. Do not create or consult .planning/index-jobs/<job-id>/ files.",
       "FAIL-CLOSED: if that wait command exits non-zero, stop the planning pipeline immediately, report the indexing error, and do not mark Phase 0 completed or continue to discovery.",
       `After a successful wait and health checks, record Phase 0 evidence, set current_phase=1, and immediately spawn the External discovery lane as a background general-purpose agent — exactly one Agent call in its own message — using the exact ${DISCOVERY_CONTRACT_BEGIN} block from launch-discovery-agents.md; then run the Architecture, Patterns, and Constraints lanes in the main agent itself with GitNexus/Serena and write 1-architecture.md, 2-patterns.md, and 3-constraints.md directly — never spawn subagents for them. Do not pre-mark the External lane running; record running only after accepted launch with verified identity.`,
+    );
+  } else if (earlyIndex.status === "already_indexed") {
+    lines.push(
+      `EARLY PHASE 0 INDEX skipped: Phase 0 is already completed with collected index evidence for target_root=${earlyIndex.targetRoot}` +
+      (earlyIndex.jobId ? ` (job_id: ${earlyIndex.jobId}).` : "."),
+      "Do NOT start a new index job or rewrite Phase 0 evidence; resume from the current phase in state. If you suspect the index is stale, run bash index.sh --target <target_root> --background manually, then wait/collect it before relying on fresh index results.",
     );
   } else if (earlyIndex.status === "failed") {
     lines.push(
@@ -67,7 +73,7 @@ export async function validateUserPromptSubmit(input, projectDir) {
     lines.push(
       `Planning state is ACTIVE. feature=${state.feature} current_phase=${state.current_phase} completed=[${(state.completed_phases||[]).join(",")}] phase_plan_approved=${state.phase_plan_approved}.`,
       resumeLine,
-      "Execution style: after Phase 1.5 reaches 12/12, continue into Phase 1.6 for 8/8 test clarification, then continue in one run through Phase 2 into Phase 2.5; if Phase 2.5 is approved, continue in one run through Phase 3 and Phase 4, pause only at the Phase 4 approval AskUserQuestion, and after exact Approve continue immediately in one run through Phase 5 and Phase 7, then stop planning on READY/READY_LITE/READY_TARGETED.",
+      "Execution style: after Phase 1.5 reaches 12/12, continue into Phase 1.6 for 8/8 test clarification, then continue in one run through Phase 2 and auto-approved Phase 2.5 (write phase-plan.md, set phase_plan_approved=true; no approval question) into Phase 3 and Phase 4, pause only at the Phase 4 approval AskUserQuestion, and after exact Approve continue immediately in one run through Phase 5 (materialize_beads.mjs) and Phase 6, then stop planning when Phase 6 records cycles_found=0 and planning_active=false.",
       `Next action: ${nextActionHint(state)}`,
       `Begin every response with the '=== PIPELINE STATUS ===' header.`,
     );

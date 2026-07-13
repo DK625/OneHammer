@@ -4,7 +4,7 @@ Single Node `.mjs` entry point (`.claude/hooks/planning_guard.mjs`) that reads s
 JSON from Claude Code hook events and enforces the `planning` skill's phase gates
 and artifact invariants. No external dependencies — only Node built-ins.
 
-`.planning/state/planning-state-v2.json` is the single authoritative planning status/state file. Hooks do not require or consume a Markdown status mirror.
+`.planning/state/planning-state-v2.json` under `HISTORY_ROOT` (the selected target repo) is the single authoritative planning status/state file; hooks locate it through the `CONTROL_ROOT/.planning/state/active-target-root` pointer written by the resolver/`index.sh` on successful target resolution. Without a selected target it stays under `CONTROL_ROOT`. Hooks do not require or consume a Markdown status mirror.
 
 ## Root scoping
 
@@ -16,7 +16,7 @@ TARGET_ROOT  = phase_outputs.0.project_index_root when selected
 HISTORY_ROOT = TARGET_ROOT when selected; otherwise CONTROL_ROOT
 ```
 
-`.planning/state`, hook code, skill code, and `.mcp.json` are read from `CONTROL_ROOT`. Relative `history/...` artifact paths are resolved from `HISTORY_ROOT`. For a generic nested-repository case:
+Hook code, skill code, `.mcp.json`, and the `.planning/state/active-target-root` pointer are read from `CONTROL_ROOT`. The authoritative state and relative `.planning/...` (and legacy `history/...`) artifact paths are resolved from `HISTORY_ROOT`. For a generic nested-repository case:
 
 ```text
 CONTROL_ROOT = /workspace/control
@@ -24,10 +24,10 @@ TARGET_ROOT  = /workspace/control/service-repo
 feature      = example-feature
 
 required workspace:
-  /workspace/control/service-repo/history/example-feature
+  /workspace/control/service-repo/.planning/history/example-feature
 ```
 
-A directory at `/workspace/control/history/example-feature` does not satisfy the gate. When no target repo has been selected, history keeps the previous/default behavior and resolves under the normal project/cwd root.
+A directory at `/workspace/control/.planning/history/example-feature` (or legacy `/workspace/control/history/example-feature`) does not satisfy the gate. When no target repo has been selected, history and state keep the previous/default behavior and resolve under the normal project/cwd root.
 
 ## Architecture
 
@@ -69,36 +69,36 @@ A directory at `/workspace/control/history/example-feature` does not satisfy the
 | PreToolUse:Bash   | Block `br create` when bead description lacks technical contract details (API contract + DB/config source-of-truth), evidence clauses matching the bead's actual BE/FE/integration surface, migration/provisioning decision rules, completion close-gate evidence, or test-session budget/split policy; for `agent-browser` evidence require `.claude/lessons/browser-runbook.md`, before-action and after/final screenshot paths, browser action sequence, screenshot interpretation expectations, expected browser network/API cue plus artifact/requests log, quality-gate classification, and runbook delta expectation; also block oversized fullstack beads that combine BE/API curl/runtime proof with FE agent-browser proof unless a split/paired bead or `Single-session exception` is explicit | permissionDecision deny  |
 | PreToolUse:Bash   | Block `br close` for implementation/test beads whose description requires runtime evidence unless the close reason records required API/auth/status evidence, DB/query proof when named, migration/provisioning decision/apply proof when relevant, and FE agent-browser evidence only when FE/UI evidence is required: before-action + after/final screenshots, what each screenshot proves, browser action summary, expected/observed UI state, browser network method/path/status when relevant, non-empty network artifact (0-request HAR is rejected), runbook delta/unchanged status, and quality-gate classification (or explicit FE N/A/mismatch follow-up for BE-only scope) | permissionDecision deny  |
 | PreToolUse:Bash   | Block large chained `br dep add` batches in Phase 5+ so dependency edges are reviewed as real prerequisites instead of recreating an over-linear graph; keep independent beads parallel-ready and use fan-out/fan-in | permissionDecision deny |
-| PreToolUse:Agent  | Block discovery Agent calls outside Phase 1; deny any Architecture/Patterns/Constraints-lane subagent launch (those lanes are main-agent-owned via GitNexus/Serena-direct); during Phase 1 the only allowed subagent lane is External (`lane=external`), with `subagent_type="general-purpose"`, `run_in_background=true`, and the exact versioned `[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]` key/value block with the canonical External artifact. The block machine-checks direct full-detail file delivery, single-lane write scope, main-agent ownership of `discovery.md`/state, file handoff, topology/provider-first ordering, and Browser Runbook candidate capture. Duplicate blocking uses effective lifecycle classification: identity-less `running` is `orphaned`/retryable, not a permanent lock | permissionDecision deny  |
-| PreToolUse:AskUserQuestion | Block AskUserQuestion outside phases 1.5 / 1.6 / 2.5 / 4; Phase 0 project indexing is automatic and user prompting is blocked; block Phase 1.5 questions until Phase 1 is completed and Phase 1.6 questions until Phase 1.5 is completed; hard-block resume reread only when `.planning/state/planning-state-v2.json` explicitly sets `resume_context.required=true` (continuous in-session planning gets non-blocking prime/reminder from SessionStart/UserPromptSubmit); in Phase 1.5 require exactly 4 questions per round with header/text/>=2 options each, cap at 12 total via `phase_outputs."1.5".questions_asked`; in Phase 1.6 require exactly 4 questions per round with header/text/>=2 options each, cap at 8 total via `phase_outputs."1.6".questions_asked`; in Phase 2.5 require the exact phase-plan approval shape; in Phase 4 require full feature-plan contract/story-map coverage before allowing the exact whole-set approval shape | permissionDecision deny  |
-| PreToolUse:Write/Edit | Target-scope active feature history writes: when selected target repo differs from control root, block relative `history/<feature>/...` writes that would land under control root and block absolute writes into the wrong control-root workspace; also block flat phase contract/story-map paths | permissionDecision deny |
+| PreToolUse:Agent  | Block discovery Agent calls outside Phase 1; deny any Architecture-lane subagent launch (that lane is main-agent-owned via GitNexus-direct); during Phase 1 require exactly one canonical subagent lane (Patterns/Constraints/External), `subagent_type="general-purpose"`, `run_in_background=true`, and the exact versioned `[PLANNING_DISCOVERY_AGENT_CONTRACT_V1]` key/value block with lane-specific canonical artifact. The block machine-checks direct full-detail file delivery, single-lane write scope, main-agent ownership of `discovery.md`/state, file handoff, topology/provider-first ordering, and Browser Runbook candidate capture. Duplicate blocking uses effective lifecycle classification: identity-less `running` is `orphaned`/retryable, not a permanent lock | permissionDecision deny  |
+| PreToolUse:AskUserQuestion | Block AskUserQuestion outside phases 1.5 / 1.6 / 4 (Phase 2.5 is auto-approved and never asks); Phase 0 project indexing is automatic and user prompting is blocked; block Phase 1.5 questions until Phase 1 is completed and Phase 1.6 questions until Phase 1.5 is completed; hard-block resume reread only when `.planning/state/planning-state-v2.json` explicitly sets `resume_context.required=true` (continuous in-session planning gets non-blocking prime/reminder from SessionStart/UserPromptSubmit); in Phase 1.5 require exactly 4 questions per round with header/text/>=2 options each, cap at 12 total via `phase_outputs."1.5".questions_asked`; in Phase 1.6 require exactly 4 questions per round with header/text/>=2 options each, cap at 8 total via `phase_outputs."1.6".questions_asked`; in Phase 4 require full feature-plan contract/story-map coverage before allowing the exact whole-set approval shape | permissionDecision deny  |
+| PreToolUse:Write/Edit | Target-scope active feature history writes: when selected target repo differs from control root, block relative `.planning/history/<feature>/...` (and legacy `history/<feature>/...`) writes that would land under control root and block absolute writes into the wrong control-root workspace; also block flat phase contract/story-map paths; phase-artifact ordering gate: inside the feature workspace, deny `requirements.md` before `phase_outputs."1.5".questions_asked=12`, deny `test-scenarios.md` before Phase 1.5 is satisfied and `phase_outputs."1.6".questions_asked=8`, and deny `approach.md` / `phase-plan.md` / `contracts/phase-<n>-contract.md` / `story-maps/phase-<n>-story-map.md` until both Phase 1.5 and Phase 1.6 are satisfied | permissionDecision deny |
 | PostToolBatch     | At `current_phase === "1"`, validate each discovery Agent call against the same canonical versioned contract, lane identity, background mode, and subagent type without inferring global coverage from a partial batch; malformed calls receive copy-safe corrective guidance | additionalContext       |
-| PostToolUse       | After Write/Edit state file: require canonical phase ordering; Phase 0 evidence/index invariants; reject Phase 1 `status="running"` entries that lack verified launch identity; validate target-scoped artifacts and later phase invariants; inject continuity guidance including canonical Phase 1 launcher instructions and later 2 -> 2.5, 3 -> 4, 5 -> 7 transitions | decision block           |
+| PostToolUse       | After Write/Edit state file: require canonical phase ordering; Phase 0 evidence/index invariants; reject Phase 1 `status="running"` entries that lack verified launch identity; validate target-scoped artifacts and later phase invariants; inject continuity guidance including canonical Phase 1 launcher instructions and later 2 -> 2.5, 3 -> 4, 5 -> 6 transitions | decision block           |
 | PostToolUse       | After Write/Edit `approach.md`: require Gap Analysis / Recommended Approach / Alternatives Considered / Risk Map                                           | decision block           |
 | PostToolUse       | After Write/Edit `discovery.md`: require 12 sections from SKILL.md                                                                                         | decision block           |
-| PostToolUse       | After Write/Edit/MultiEdit under `history/<feature>/discovery-lanes/`: require canonical numbered lane filenames (`1-architecture.md`, `2-patterns.md`, `3-constraints.md`, `4-external.md`) | decision block           |
+| PostToolUse       | After Write/Edit/MultiEdit under `.planning/history/<feature>/discovery-lanes/`: require canonical numbered lane filenames (`1-architecture.md`, `2-patterns.md`, `3-constraints.md`, `4-external.md`) | decision block           |
 | PostToolUse       | After Write/Edit `contracts/phase-<n>-contract.md` / `story-maps/phase-<n>-story-map.md`: require core sections                                                                 | decision block           |
 | PostToolUse       | After Bash `bv --robot-insights`: parse stdout, block if cycles are non-empty                                                                              | decision block           |
-| PostToolUse       | After Write/Edit/MultiEdit of the authoritative JSON state file: verify completed artifacts exist, Phase 1 lane artifacts exist, Phase 1.5 / 1.6 / 2.5 invariants hold, terminal Phase 7 invariants hold (`validation_mode`, `cycles_found=0`, READY* verdict, validator ID policy, `completed_phases` contains `7`, `current_phase="7"`, `planning_active=false`), and (for full mode) Phase 5 has full-feature Story-To-Bead coverage using canonical actual Beads issue IDs returned by `br` (whatever project prefix the active repo uses) across all phases declared in phase-plan.md before Phase 7; `br-*` aliases are backward-compatible input only and should be normalized to the canonical actual IDs before this gate | decision block   |
-| Stop              | When planning active, block if last_assistant_message does not start with the full machine-checkable PIPELINE STATUS block. Also block premature “if you’re ok I’ll continue” pause prompts during Phase 2 before 2.5 approval prep, during Phase 3/4 before the Phase 4 approval AskUserQuestion, and during Phase 5/7 after Phase 4 Approve before terminal Phase 7 readiness. Once Phase 7 atomically sets `planning_active=false`, planning may stop. Respects `stop_hook_active` loop guard + `PLANNING_GUARD_BYPASS=1` | decision block           |
-| UserPromptSubmit  | Detect planning intent; for explicit `/planning`, attempt safe target resolution and start background indexing before broad context reads, keep Phase 0 bounded, then after successful collection direct immediate Phase 1 spawning with the canonical versioned prompt block and no pre-marked `running` state | additionalContext        |
-| SessionStart      | If planning active, inject current_phase + next-action context; Phase 1 resume is special-cased to launch a missing/failed/orphaned background `general-purpose` External subagent lane with the canonical versioned prompt block and to produce missing Architecture/Patterns/Constraints lanes directly in the main agent via GitNexus/Serena; identity-less `running` is explicitly retryable; later phases keep focused resume guidance | additionalContext        |
+| PostToolUse       | After Write/Edit/MultiEdit of the authoritative JSON state file: verify completed artifacts exist, Phase 1 lane artifacts exist, Phase 1.5 / 1.6 / 2.5 invariants hold, terminal Phase 6 invariants hold (`cycles_found=0`, `completed_phases` contains `6`, `current_phase="6"`, `planning_active=false`), and (for full mode) Phase 5 has full-feature Story-To-Bead coverage using canonical actual Beads issue IDs returned by `br` (whatever project prefix the active repo uses) across all phases declared in phase-plan.md before Phase 6; `br-*` aliases are backward-compatible input only and should be normalized to the canonical actual IDs before this gate | decision block   |
+| Stop              | When planning active, block if last_assistant_message does not start with the full machine-checkable PIPELINE STATUS block. Also block premature “if you’re ok I’ll continue” pause prompts during Phase 2 before 2.5 approval prep, during Phase 3/4 before the Phase 4 approval AskUserQuestion, and during Phase 5/6 after Phase 4 Approve before terminal Phase 6 readiness. Once Phase 6 atomically sets `planning_active=false`, planning may stop. Respects `stop_hook_active` loop guard + `PLANNING_GUARD_BYPASS=1` | decision block           |
+| UserPromptSubmit  | Detect planning intent; for explicit `/planning`, attempt safe target resolution and start background indexing before broad context reads, keep Phase 0 bounded, then after successful collection direct immediate Phase 1 spawning with the canonical versioned prompt block and no pre-marked `running` state. Resume skip: when state already has completed+collected Phase 0 evidence for the same target, no new job is queued (evidence pointers stay untouched) | additionalContext        |
+| SessionStart      | If planning active, inject current_phase + next-action context; Phase 1 resume is special-cased to launch missing/failed/orphaned background `general-purpose` subagent lanes (Patterns/Constraints/External) with the canonical versioned prompt block and to produce a missing Architecture lane directly in the main agent via GitNexus; identity-less `running` is explicitly retryable; later phases keep focused resume guidance | additionalContext        |
 
 ## Phase 1 discovery Agent contract and lifecycle
 
-The failure transcript demonstrates why Phase 1 must not depend on free-form phrase matching or speculative state updates: an Agent call can be denied by PreToolUse before spawn while state already says `running`, producing false duplicate blocks on retry. Only the External lane is spawned as a subagent; Architecture, Patterns, and Constraints are produced directly by the main agent and never enter the launch lifecycle.
+The failure transcript demonstrates why Phase 1 must not depend on free-form phrase matching or speculative state updates: all four Agent calls can be denied by PreToolUse before spawn while state already says `running`, producing false duplicate blocks on retry.
 
 The fixed contract is the exact block documented in `.claude/skills/planning/references/launch-discovery-agents.md`:
 
 ```text
 [PLANNING_DISCOVERY_AGENT_CONTRACT_V1]
-lane=external
-artifact=history/<feature>/discovery-lanes/4-external.md
+lane=<patterns|constraints|external>
+artifact=.planning/history/<feature>/discovery-lanes/<canonical-numbered-file>.md
 requirement_input=provided_requirement_source_or_current_request
 delivery=direct_canonical_markdown_file
 detail=full_detailed_non_summary
 write_scope=canonical_lane_file_only
-forbid=.planning/,planning-state-v2.json,discovery.md,other_lane_files
+forbid=.planning/state/,planning-state-v2.json,discovery.md,other_lane_files
 main_agent_owns=read_verify_lane_files,compile_discovery_md,manage_planning_state
 handoff=canonical_file_not_background_response_body
 topology=read_active_repo_project_instructions,discover_actual_topology,provider_source_of_truth_before_dependent_consumer_impact
@@ -106,7 +106,7 @@ browser_runbook_candidates=durable_ui_route_login_selector_state_cues
 [/PLANNING_DISCOVERY_AGENT_CONTRACT_V1]
 ```
 
-Only `artifact` varies by feature (`lane` is always `external` — the other lanes are main-agent-owned and never spawned). The guard parses exact keys/values rather than attempting to infer equivalent prose. Malformed/missing blocks are denied.
+Only `lane` and `artifact` vary by lane/feature. The guard parses exact keys/values rather than attempting to infer equivalent prose. Malformed/missing blocks are denied.
 
 State lifecycle rules:
 
@@ -184,7 +184,7 @@ printf '%s' '{"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","tool
 Requirement-source resolution order for explicit `resume_context.required=true` checks:
 1. `resume_context.requirement_source_path`
 2. `phase_outputs.0.requirement_source_path` (or `phase_outputs."1.5".requirement_source_path` / latest in `requirement_source_paths`)
-3. latest markdown file by mtime in target-repo-scoped `history/<feature>/requirements/` (`HISTORY_ROOT`, fallback control root only when no target is selected)
+3. latest markdown file by mtime in target-repo-scoped `.planning/history/<feature>/requirements/` (`HISTORY_ROOT`, fallback control root only when no target is selected)
 
 If none resolve to an existing file, the explicit resume gate passes through instead of hard-coding a fallback path.
 

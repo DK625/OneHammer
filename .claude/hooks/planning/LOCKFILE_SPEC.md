@@ -4,13 +4,13 @@
 
 ## Problem
 
-`.planning/state/planning-state-v2.json` is a single shared file. Multiple workflow actors may work in the same repository concurrently, so two state writers can clobber each other's transitions (for example, Phase 2 → 2.5 overwritten by another state update). Phase 1 lane agents are explicitly not state writers: they write only their own canonical lane Markdown files; the main agent owns state recording/verification.
+`.planning/state/planning-state-v2.json` (under `HISTORY_ROOT`, resolved through the `CONTROL_ROOT/.planning/state/active-target-root` pointer) is a single shared file. Multiple workflow actors may work in the same repository concurrently, so two state writers can clobber each other's transitions (for example, Phase 2 → 2.5 overwritten by another state update). Phase 1 lane agents are explicitly not state writers: they write only their own canonical lane Markdown files; the main agent owns state recording/verification.
 
 ## Lockfile Design
 
 | Field | Value |
 |-------|-------|
-| Path | `.planning/state/planning-state-v2.lock` |
+| Path | `.planning/state/planning-state-v2.lock` (next to the resolved state file) |
 | Format | JSON: `{ "pid": <number>, "acquired_at": "<ISO-8601>", "session_id": "<string>" }` |
 | TTL | 30 seconds (stale locks are treated as expired) |
 | Ownership | Per-process via PID recorded in the lockfile |

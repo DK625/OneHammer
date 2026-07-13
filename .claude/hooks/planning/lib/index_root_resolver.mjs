@@ -9,6 +9,7 @@ import {
   sep,
 } from "node:path";
 import { promisify } from "node:util";
+import { stateFilePath, writeActiveTargetRoot } from "./state.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -323,6 +324,17 @@ function conflict(code, message, details) {
 }
 
 export async function resolveIndexRoot(options = {}) {
+  const result = await resolveIndexRootWithoutPointer(options);
+  // Successful resolution publishes CONTROL_ROOT/.planning/state/active-target-root
+  // so every later state read/write (hooks, index.sh, job records) resolves the
+  // authoritative planning state under the target repo's .planning/state/.
+  if (result?.ok && result.control_root && result.target_root) {
+    writeActiveTargetRoot(result.control_root, result.target_root);
+  }
+  return result;
+}
+
+async function resolveIndexRootWithoutPointer(options = {}) {
   const scriptControlRoot = options.controlRoot;
   if (!scriptControlRoot) fail("MISSING_CONTROL_ROOT", "control root is required.");
 
@@ -365,7 +377,9 @@ export async function resolveIndexRoot(options = {}) {
     };
   }
 
-  const statePath = options.statePath || join(controlRoot, ".planning", "state", "planning-state-v2.json");
+  // Follows the active-target-root pointer, so a resumed session reads the state
+  // that lives under the previously selected target repo's .planning/state/.
+  const statePath = options.statePath || stateFilePath(controlRoot);
   const state = options.state === undefined ? await readJsonIfExists(statePath) : options.state;
   const phase0StoredRaw = state?.phase_outputs?.["0"]?.project_index_root;
 

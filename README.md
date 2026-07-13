@@ -16,7 +16,6 @@ Bộ **skills, hooks, và setup scripts** do OneHammer dùng thực chiến cho 
 | [One-command Installer](#cài-đặt-one-command) | Script cài/gỡ | Cài toàn bộ scaffold + toolchain (br, bv, jq, GitNexus, Beads) bằng một lệnh curl |
 | [Codex Review Skill](#codex-review-skill) | Claude Code skill | Gọi Codex làm reviewer thứ hai ngay trong terminal |
 | [Planning Skill](#planning-skill) | Claude Code skill | Pipeline lập kế hoạch feature theo phase, có artifact và gate |
-| [Planning Validator](#planning-validator) | Claude Code skill | Deep validation cho plan rủi ro cao |
 | [OneHammer Forge](#onehammer-forge) | Claude Code skill | Claim bead, implement, kiểm chứng runtime, handoff |
 | [GPT Web Review](#gpt-web-review) | Claude Code skill | Gửi context sang ChatGPT web qua Oracle CLI, nhận raw response |
 | [GPT Web Fix Flow](#gpt-web-fix-flow) | Codex skill | Đóng gói context, gửi GPT Web, chờ zip trả về, apply có gate |
@@ -37,7 +36,7 @@ Installer cài **thẳng vào thư mục hiện tại (cwd)** — đứng ở đ
 
 Một lệnh duy nhất sẽ:
 
-- Copy scaffold OneHammer vào project: `.claude/hooks/`, `.claude/skills/{planning,planning-validator,onehammer-forge}`, `.claude/settings.json`, `.mcp.json`.
+- Copy scaffold OneHammer vào project: `.claude/hooks/`, `.claude/skills/{planning,onehammer-forge}`, `.claude/settings.json`, `.mcp.json`.
 - Tự cài `jq` nếu chưa có (package manager hoặc official binary có checksum).
 - Cài các CLI planning: `br`, `bv`, `gitnexus`, và khởi tạo Beads workspace (`.beads/`).
 - Wire hook GitNexus user-level (`~/.claude/hooks/gitnexus/`) vào `.claude/settings.json` của project.
@@ -130,16 +129,10 @@ Pipeline planning bắt buộc cho feature có scope đáng kể. Luồng chuẩ
 | 2.5 | Approval cho whole-feature phase plan |
 | 3 | Contract chi tiết cho từng phase |
 | 4 | Story map và approval cho decomposition |
-| 5 | Tạo beads thật bằng `br create` |
-| 7 | Validate graph và semantic readiness — điểm dừng bắt buộc của pipeline (execution chỉ bắt đầu khi user yêu cầu) |
+| 5 | Materialize beads bằng script deterministic (`materialize_beads.mjs`) từ Bead Specs trong story-maps đã duyệt |
+| 6 | Validate graph (0 cycles) + coverage — điểm dừng bắt buộc của pipeline (execution chỉ bắt đầu khi user yêu cầu) |
 
 Artifacts chính nằm dưới `history/<feature>/`: `discovery-lanes/`, `discovery.md`, `requirements.md`, `test-scenarios.md`, `approach.md`, `phase-plan.md`, `contracts/`, `story-maps/`.
-
-### Planning Validator
-
-Path: `.claude/.skills/planning-validator`
-
-Dùng làm deep validation gate khi plan có rủi ro cao như payment, security, data migration, dependency mới hoặc cross-module contract. Skill cung cấp checklist, reviewer prompts và spike template trong `references/`.
 
 ### OneHammer Forge
 
@@ -225,8 +218,7 @@ OneHammer/
 │   │   ├── codex/
 │   │   ├── gpt-web-review/
 │   │   ├── onehammer-forge/
-│   │   ├── planning/
-│   │   └── planning-validator/
+│   │   └── planning/
 │   └── hooks/
 │       ├── planning_guard.mjs
 │       └── planning/

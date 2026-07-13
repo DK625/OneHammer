@@ -15,7 +15,7 @@ function usage() {
     "Options:",
     "  --control-root <directory>   Claude control/workspace root (default: CLAUDE_PROJECT_DIR or script root)",
     "  --pwd <directory>            Resolution cwd for relative paths (default: process.cwd())",
-    "  --state <file>               Planning state JSON path (default: <control>/.planning/state/planning-state-v2.json)",
+    "  --state <file>               Planning state JSON path (default: <target-or-control>/.planning/state/planning-state-v2.json via the active-target-root pointer)",
     "  --no-pwd-fallback            Disable final pwd repository fallback",
   ].join("\n");
 }

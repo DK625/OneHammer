@@ -19,7 +19,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../../../..");
 const SCAN_ROOTS = [
   join(ROOT, ".claude", "skills", "planning"),
-  join(ROOT, ".claude", "skills", "planning-validator"),
   join(ROOT, ".claude", "hooks", "planning"),
 ];
 

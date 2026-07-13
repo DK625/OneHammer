@@ -11,13 +11,13 @@ import {
   readFile, writeFile, access, constants,
 } from "node:fs/promises";
 import {
-  writeFileSync, readFileSync, unlinkSync, statSync,
+  writeFileSync, readFileSync, unlinkSync, statSync, mkdirSync,
 } from "node:fs";
 import { join, dirname, isAbsolute, resolve } from "node:path";
 import { warn, debug } from "./diagnostics.mjs";
 
 const VALID_PHASES = new Set([
-  "0", "1", "1.5", "1.6", "2", "2.5", "3", "4", "5", "7",
+  "0", "1", "1.5", "1.6", "2", "2.5", "3", "4", "5", "6",
   // Handoff sentinel
   "handoff",
 ]);
@@ -30,12 +30,50 @@ const LOCK_TTL_MS = 30_000;
 const LOCK_DEFAULT_TIMEOUT_MS = 5_000;
 const LOCK_POLL_INTERVAL_MS = 50;
 
+// The authoritative state lives under the SELECTED TARGET REPO's .planning/state/
+// (same root as .planning/history/<feature>). Hooks run with projectDir=CONTROL_ROOT,
+// which may differ from the target repo, so CONTROL_ROOT keeps a small pointer file
+// (.planning/state/active-target-root) holding the absolute target root. Written by
+// resolve_index_root.mjs / index.sh at target-resolution time. Without a valid
+// pointer, state resolves under projectDir itself (no-target / control==target case).
+const ACTIVE_TARGET_POINTER = "active-target-root";
+
+export function activeTargetPointerPath(projectDir) {
+  return join(projectDir, ".planning", "state", ACTIVE_TARGET_POINTER);
+}
+
+export function readActiveTargetRoot(projectDir) {
+  try {
+    const raw = readFileSync(activeTargetPointerPath(projectDir), "utf8").trim();
+    if (!raw || !isAbsolute(raw)) return null;
+    const canonical = resolve(raw);
+    if (!statSync(canonical).isDirectory()) return null;
+    return canonical;
+  } catch {
+    return null;
+  }
+}
+
+export function writeActiveTargetRoot(projectDir, targetRoot) {
+  const raw = String(targetRoot ?? "").trim();
+  if (!raw || !isAbsolute(raw)) {
+    throw new Error(`active target root must be an absolute path (got '${raw || "<empty>"}')`);
+  }
+  const p = activeTargetPointerPath(projectDir);
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(p, `${resolve(raw)}\n`, "utf8");
+}
+
+export function planningStateRoot(projectDir) {
+  return readActiveTargetRoot(projectDir) ?? resolve(projectDir);
+}
+
 export function stateFilePath(projectDir) {
-  return join(projectDir, ".planning", "state", "planning-state-v2.json");
+  return join(planningStateRoot(projectDir), ".planning", "state", "planning-state-v2.json");
 }
 
 export function lockFilePath(projectDir) {
-  return join(projectDir, ".planning", "state", "planning-state-v2.lock");
+  return join(planningStateRoot(projectDir), ".planning", "state", "planning-state-v2.lock");
 }
 
 export async function fileExists(p) {
@@ -157,17 +195,6 @@ function validateAgainstSchema(state, projectDir) {
       issues.push(`mode='${state.mode}' not in enum ${JSON.stringify(props.mode.enum)}`);
     }
   }
-  // Check phase_outputs entries: enum for semantic_verdict in phase 7.
-  const po = state.phase_outputs;
-  if (po && typeof po === "object") {
-    const p7Schema = props.phase_outputs?.properties?.["7"]?.properties;
-    const sv = po["7"]?.semantic_verdict;
-    if (p7Schema?.semantic_verdict?.enum && sv != null) {
-      if (!p7Schema.semantic_verdict.enum.includes(sv)) {
-        issues.push(`phase_outputs.7.semantic_verdict='${sv}' not in enum ${JSON.stringify(p7Schema.semantic_verdict.enum)}`);
-      }
-    }
-  }
   return { ok: issues.length === 0, issues };
 }
 
@@ -210,35 +237,43 @@ export function phaseOutput(state, phaseId) {
 export function featurePath(state) {
   if (!state || !state.feature) return null;
   // Default convention per SKILL.md. This remains target-repo-relative.
-  return `history/${state.feature}`;
+  return `.planning/history/${state.feature}`;
 }
 
-// Planning state stays under CONTROL_ROOT, but human planning artifacts are scoped
-// to the selected target repository when Phase 0 has recorded one. Before a target
-// is selected (or for legacy/incomplete state), preserve the historical behavior:
-// resolve history/ from the normal project/control root.
+// Both the authoritative state and human planning artifacts live under the selected
+// target repository's .planning/ when Phase 0 has recorded one (or when the
+// active-target-root pointer already names it). Before a target is selected (or for
+// legacy/incomplete state), preserve the historical behavior: resolve .planning/
+// artifacts from the normal project/control root.
 export function historyRoot(state, projectDir) {
   const controlRoot = resolve(projectDir);
   const targetRoot = state?.phase_outputs?.["0"]?.project_index_root;
-  if (typeof targetRoot !== "string") return controlRoot;
-  const trimmed = targetRoot.trim();
-  if (!trimmed || !isAbsolute(trimmed)) return controlRoot;
-  return resolve(trimmed);
+  if (typeof targetRoot !== "string" || !targetRoot.trim() || !isAbsolute(targetRoot.trim())) {
+    return readActiveTargetRoot(projectDir) ?? controlRoot;
+  }
+  return resolve(targetRoot.trim());
 }
 
 export function isHistoryScopedPath(pathValue) {
   const raw = String(pathValue ?? "").trim();
   if (!raw || isAbsolute(raw)) return false;
   const normalized = raw.replace(/\\/g, "/").replace(/^\.\/+/, "");
-  return normalized === "history" || normalized.startsWith("history/");
+  // Canonical: .planning/... (history/, state/). Legacy: bare history/... from
+  // pre-relocation state files keeps resolving under the same target root.
+  return normalized === ".planning" || normalized.startsWith(".planning/") ||
+    normalized === "history" || normalized.startsWith("history/");
 }
 
 export function resolvePlanningPath(projectDir, state, pathValue) {
   const raw = String(pathValue ?? "").trim();
   if (!raw) return null;
   if (isAbsolute(raw)) return resolve(raw);
-  const base = isHistoryScopedPath(raw) ? historyRoot(state, projectDir) : resolve(projectDir);
-  return resolve(base, raw);
+  if (!isHistoryScopedPath(raw)) return resolve(resolve(projectDir), raw);
+  // Legacy `history/...` values from pre-relocation state files resolve to the
+  // canonical physical location under .planning/history/.
+  const normalized = raw.replace(/\\/g, "/").replace(/^\.\/+/, "")
+    .replace(/^history(\/|$)/, ".planning/history$1");
+  return resolve(historyRoot(state, projectDir), normalized);
 }
 
 export function featureWorkspacePath(projectDir, state) {

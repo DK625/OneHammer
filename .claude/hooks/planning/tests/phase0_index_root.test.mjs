@@ -14,6 +14,7 @@ import { extractPlanningPathCandidates, startEarlyIndexFromPrompt } from "../lib
 import { PHASE_SEQUENCE } from "../lib/phase_gates.mjs";
 import { featureWorkspacePath, historyRoot, resolvePlanningPath } from "../lib/state.mjs";
 import { validatePostToolUse } from "../validators/post_tool_use.mjs";
+import { validatePreToolUse } from "../validators/pre_tool_use.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLANNING_DIR = resolve(HERE, "..");
@@ -361,7 +362,7 @@ test("index.sh background job overlaps work, status reports running, then wait c
   assert.ok(calls.includes(`uvx|${fixture.child}|`));
   assert.ok(calls.includes(`gitnexus|${fixture.child}|analyze`));
 
-  const state = JSON.parse(await readFile(join(fixture.control, ".planning", "state", "planning-state-v2.json"), "utf8"));
+  const state = JSON.parse(await readFile(join(fixture.child, ".planning", "state", "planning-state-v2.json"), "utf8"));
   const p0 = state.phase_outputs["0"];
   const record = p0.project_index_jobs[jobId];
   assert.equal(p0.project_index_job_id, jobId);
@@ -397,7 +398,7 @@ test("index.sh background failure is fail-closed and stores failure evidence in 
   assert.ok(calls.includes("uvx|"));
   assert.ok(!calls.includes("gitnexus|"));
 
-  const state = JSON.parse(await readFile(join(fixture.control, ".planning", "state", "planning-state-v2.json"), "utf8"));
+  const state = JSON.parse(await readFile(join(fixture.child, ".planning", "state", "planning-state-v2.json"), "utf8"));
   const record = state.phase_outputs["0"].project_index_jobs[jobId];
   assert.equal(record.status, "failed");
   assert.notEqual(record.exit_code, 0);
@@ -440,7 +441,7 @@ test("planning path extraction ignores /planning command token and keeps explici
 async function makeGuardFixture() {
   const fixture = await makeNestedFixture();
   await mkdirp(join(fixture.control, ".planning", "state"));
-  await mkdirp(join(fixture.child, "history", "example-feature"));
+  await mkdirp(join(fixture.child, ".planning", "history", "example-feature"));
   await writeFile(join(fixture.control, ".mcp.json"), JSON.stringify({
     mcpServers: { serena: {}, exa: {}, gitnexus: {} },
   }));
@@ -450,7 +451,7 @@ async function makeGuardFixture() {
 function validP0(fixture) {
   return {
     status: "completed",
-    feature_path: "history/example-feature",
+    feature_path: ".planning/history/example-feature",
     mcp_json_checked: true,
     mcp_servers_verified: ["serena", "exa", "gitnexus"],
     serena_onboarding_checked: true,
@@ -659,7 +660,7 @@ test("hook validation accepts authoritative JSON state with feature set and no M
 test("resume gate does not require a Markdown status mirror", async () => {
   const fixture = await makeGuardFixture();
   const feature = "example-feature";
-  const historyDir = join(fixture.child, "history", feature);
+  const historyDir = join(fixture.child, ".planning", "history", feature);
   const lanesDir = join(historyDir, "discovery-lanes");
   await mkdirp(lanesDir);
   await writeFile(join(historyDir, "discovery.md"), "# Discovery\n");
@@ -677,7 +678,7 @@ test("resume gate does not require a Markdown status mirror", async () => {
     resume_context: { required: true, requirement_source_path: fixture.source },
     phase_outputs: {
       "0": validP0(fixture),
-      "1": { status: "completed", discovery_path: `history/${feature}/discovery.md` },
+      "1": { status: "completed", discovery_path: `.planning/history/${feature}/discovery.md` },
       "1.5": { status: "in_progress", questions_asked: 0 },
     },
   };
@@ -731,7 +732,7 @@ test("hook validation blocks old gitnexus_reindex-only evidence", async () => {
   const fixture = await makeGuardFixture();
   await writeState(fixture, {
     status: "completed",
-    feature_path: "history/example-feature",
+    feature_path: ".planning/history/example-feature",
     mcp_json_checked: true,
     mcp_servers_verified: ["serena", "exa", "gitnexus"],
     serena_onboarding_checked: true,
@@ -764,11 +765,16 @@ test("nested-repo scenario scopes feature history to target repo, not outer cont
   assert.equal(historyRoot(state, fixture.control), fixture.child);
   assert.equal(
     featureWorkspacePath(fixture.control, state),
-    join(fixture.child, "history", "example-feature"),
+    join(fixture.child, ".planning", "history", "example-feature"),
   );
   assert.equal(
+    resolvePlanningPath(fixture.control, state, ".planning/history/example-feature/discovery.md"),
+    join(fixture.child, ".planning", "history", "example-feature", "discovery.md"),
+  );
+  // Legacy pre-relocation relative values resolve to the same canonical location.
+  assert.equal(
     resolvePlanningPath(fixture.control, state, "history/example-feature/discovery.md"),
-    join(fixture.child, "history", "example-feature", "discovery.md"),
+    join(fixture.child, ".planning", "history", "example-feature", "discovery.md"),
   );
 });
 
@@ -778,7 +784,7 @@ test("history path falls back to normal project root when no target repo is sele
   assert.equal(historyRoot(state, fixture.control), fixture.control);
   assert.equal(
     featureWorkspacePath(fixture.control, state),
-    join(fixture.control, "history", "example-feature"),
+    join(fixture.control, ".planning", "history", "example-feature"),
   );
 });
 
@@ -789,7 +795,7 @@ test("PreToolUse blocks relative active-feature history write when target repo d
     hook_event_name: "PreToolUse",
     tool_name: "Write",
     tool_input: {
-      file_path: "history/example-feature/discovery.md",
+      file_path: ".planning/history/example-feature/discovery.md",
       content: "# Discovery\n",
     },
   });
@@ -804,16 +810,17 @@ test("PreToolUse blocks relative active-feature history write when target repo d
   assert.match(result.stdout, /nested-service/);
 });
 
-test("canonical phase sequence merges workspace setup into Phase 0 and ends at Phase 7", () => {
-  assert.deepEqual(PHASE_SEQUENCE, ["0", "1", "1.5", "1.6", "2", "2.5", "3", "4", "5", "7"]);
+test("canonical phase sequence merges workspace setup into Phase 0 and ends at Phase 6", () => {
+  assert.deepEqual(PHASE_SEQUENCE, ["0", "1", "1.5", "1.6", "2", "2.5", "3", "4", "5", "6"]);
   assert.equal(PHASE_SEQUENCE.includes("0.5"), false);
+  assert.equal(PHASE_SEQUENCE.includes("7"), false);
   assert.equal(PHASE_SEQUENCE.includes("8"), false);
 });
 
 test("Phase 0 completion is blocked when target-repo-scoped history/<feature>/ workspace is missing", async () => {
   const fixture = await makeGuardFixture();
-  await rm(join(fixture.child, "history", "example-feature"), { recursive: true, force: true });
-  await mkdirp(join(fixture.control, "history", "example-feature")); // wrong-root decoy
+  await rm(join(fixture.child, ".planning", "history", "example-feature"), { recursive: true, force: true });
+  await mkdirp(join(fixture.control, ".planning", "history", "example-feature")); // wrong-root decoy
   await writeState(fixture, validP0(fixture));
   const result = await validatePostToolUse({
     tool_name: "Write",
@@ -826,9 +833,9 @@ test("Phase 0 completion is blocked when target-repo-scoped history/<feature>/ w
   assert.doesNotMatch(result?.reason ?? "", new RegExp(`${fixture.control.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/history/example-feature.*does not exist`, "i"));
 });
 
-async function writeTerminalPhase7Fixture(fixture, { planningActive }) {
+async function writeTerminalPhase6Fixture(fixture, { planningActive }) {
   const feature = "example-feature";
-  const historyDir = join(fixture.child, "history", feature);
+  const historyDir = join(fixture.child, ".planning", "history", feature);
   const lanesDir = join(historyDir, "discovery-lanes");
   await mkdirp(lanesDir);
   await writeFile(join(historyDir, "discovery.md"), "# Discovery\n");
@@ -845,8 +852,8 @@ async function writeTerminalPhase7Fixture(fixture, { planningActive }) {
 
   const state = {
     feature,
-    current_phase: "7",
-    completed_phases: ["0", "1", "1.5", "1.6", "2", "5", "7"],
+    current_phase: "6",
+    completed_phases: ["0", "1", "1.5", "1.6", "2", "5", "6"],
     phase_plan_approved: false,
     planning_active: planningActive,
     mode: "lightweight",
@@ -854,31 +861,28 @@ async function writeTerminalPhase7Fixture(fixture, { planningActive }) {
       "0": { ...validP0(fixture), lightweight_mode: true },
       "1": {
         status: "completed",
-        discovery_path: `history/${feature}/discovery.md`,
+        discovery_path: `.planning/history/${feature}/discovery.md`,
         agents: ["a", "b", "c", "d"],
       },
       "1.5": {
         status: "completed",
         questions_asked: 12,
         anomaly_scan: { unresolved_count: 0 },
-        requirements_path: `history/${feature}/requirements.md`,
+        requirements_path: `.planning/history/${feature}/requirements.md`,
       },
       "1.6": {
         status: "completed",
         questions_asked: 8,
-        test_scenarios_path: `history/${feature}/test-scenarios.md`,
+        test_scenarios_path: `.planning/history/${feature}/test-scenarios.md`,
       },
       "2": {
         status: "completed",
-        approach_path: `history/${feature}/approach.md`,
+        approach_path: `.planning/history/${feature}/approach.md`,
       },
       "5": { status: "completed", beads_created: 1 },
-      "7": {
+      "6": {
         status: "completed",
-        validation_mode: "mechanical_lite",
         cycles_found: 0,
-        semantic_verdict: "READY_LITE",
-        validator_invocation_id: null,
       },
     },
   };
@@ -889,9 +893,9 @@ async function writeTerminalPhase7Fixture(fixture, { planningActive }) {
   );
 }
 
-test("terminal Phase 7 READY state accepts planning_active=false as final pipeline state", async () => {
+test("terminal Phase 6 completed state accepts planning_active=false as final pipeline state", async () => {
   const fixture = await makeGuardFixture();
-  await writeTerminalPhase7Fixture(fixture, { planningActive: false });
+  await writeTerminalPhase6Fixture(fixture, { planningActive: false });
   const result = await validatePostToolUse({
     tool_name: "Write",
     tool_input: { file_path: ".planning/state/planning-state-v2.json" },
@@ -900,9 +904,9 @@ test("terminal Phase 7 READY state accepts planning_active=false as final pipeli
   assert.equal(result, null);
 });
 
-test("terminal Phase 7 READY state blocks when planning_active remains true", async () => {
+test("terminal Phase 6 completed state blocks when planning_active remains true", async () => {
   const fixture = await makeGuardFixture();
-  await writeTerminalPhase7Fixture(fixture, { planningActive: true });
+  await writeTerminalPhase6Fixture(fixture, { planningActive: true });
   const result = await validatePostToolUse({
     tool_name: "Write",
     tool_input: { file_path: ".planning/state/planning-state-v2.json" },
@@ -910,4 +914,193 @@ test("terminal Phase 7 READY state blocks when planning_active remains true", as
   }, fixture.control);
   assert.equal(result?.decision, "block");
   assert.match(result?.reason ?? "", /planning_active must be false/i);
+});
+
+// --- Phase artifact ordering gate (1.5/1.6 before Phase 2+ synthesis artifacts) ---
+
+async function writeOrderingState(fixture, { currentPhase, completed, p15 = {}, p16 = {} }) {
+  const state = {
+    schema_version: "v2",
+    feature: "example-feature",
+    current_phase: currentPhase,
+    completed_phases: completed,
+    phase_plan_approved: false,
+    planning_active: true,
+    phase_outputs: {
+      "0": validP0(fixture),
+      "1.5": p15,
+      "1.6": p16,
+    },
+  };
+  await writeFile(
+    join(fixture.control, ".planning", "state", "planning-state-v2.json"),
+    JSON.stringify(state, null, 2),
+  );
+}
+
+function orderingWriteInput(fp) {
+  return {
+    hook_event_name: "PreToolUse",
+    tool_name: "Write",
+    tool_input: { file_path: fp, content: "# x\n" },
+  };
+}
+
+test("approach.md write is blocked before Phase 1.5/1.6 are satisfied", async () => {
+  const fixture = await makeGuardFixture();
+  await writeOrderingState(fixture, {
+    currentPhase: "1.5",
+    completed: ["0", "1"],
+    p15: { status: "in_progress", questions_asked: 0 },
+  });
+  const fp = join(fixture.child, ".planning", "history", "example-feature", "approach.md");
+  const decision = await validatePreToolUse(orderingWriteInput(fp), fixture.control);
+  assert.ok(decision, "expected deny decision");
+  assert.match(JSON.stringify(decision), /Phase artifact ordering blocked/);
+});
+
+test("phase-plan.md and contract writes are blocked while Phase 1.6 is unfinished", async () => {
+  const fixture = await makeGuardFixture();
+  await writeOrderingState(fixture, {
+    currentPhase: "1.6",
+    completed: ["0", "1", "1.5"],
+    p15: { status: "completed", questions_asked: 12 },
+    p16: { status: "in_progress", questions_asked: 4 },
+  });
+  for (const rel of ["phase-plan.md", "contracts/phase-1-contract.md", "story-maps/phase-1-story-map.md"]) {
+    const fp = join(fixture.child, ".planning", "history", "example-feature", rel);
+    const decision = await validatePreToolUse(orderingWriteInput(fp), fixture.control);
+    assert.ok(decision, `expected deny for ${rel}`);
+    assert.match(JSON.stringify(decision), /Phase artifact ordering blocked/);
+  }
+});
+
+test("requirements.md is blocked before 12/12 questions and allowed at 12/12", async () => {
+  const fixture = await makeGuardFixture();
+  const fp = join(fixture.child, ".planning", "history", "example-feature", "requirements.md");
+  await writeOrderingState(fixture, {
+    currentPhase: "1.5",
+    completed: ["0", "1"],
+    p15: { status: "in_progress", questions_asked: 8 },
+  });
+  const blocked = await validatePreToolUse(orderingWriteInput(fp), fixture.control);
+  assert.ok(blocked, "expected deny at 8/12");
+  await writeOrderingState(fixture, {
+    currentPhase: "1.5",
+    completed: ["0", "1"],
+    p15: { status: "in_progress", questions_asked: 12 },
+  });
+  assert.equal(await validatePreToolUse(orderingWriteInput(fp), fixture.control), null);
+});
+
+test("approach.md write is allowed after Phase 1.5 and 1.6 complete", async () => {
+  const fixture = await makeGuardFixture();
+  await writeOrderingState(fixture, {
+    currentPhase: "2",
+    completed: ["0", "1", "1.5", "1.6"],
+    p15: { status: "completed", questions_asked: 12 },
+    p16: { status: "completed", questions_asked: 8 },
+  });
+  const fp = join(fixture.child, ".planning", "history", "example-feature", "approach.md");
+  assert.equal(await validatePreToolUse(orderingWriteInput(fp), fixture.control), null);
+});
+
+test("ordering gate ignores same-named files outside the feature workspace", async () => {
+  const fixture = await makeGuardFixture();
+  await writeOrderingState(fixture, {
+    currentPhase: "1.5",
+    completed: ["0", "1"],
+    p15: { status: "in_progress", questions_asked: 0 },
+  });
+  const fp = join(fixture.child, "docs", "approach.md");
+  assert.equal(await validatePreToolUse(orderingWriteInput(fp), fixture.control), null);
+});
+
+test("early /planning prompt skips new index job when Phase 0 already completed for same target", async () => {
+  const fixture = await makeNestedFixture();
+  const fake = await makeFakeIndexers();
+  // Realistic resume layout: pointer at control, authoritative state in target repo.
+  await mkdirp(join(fixture.control, ".planning", "state"));
+  await writeFile(join(fixture.control, ".planning", "state", "active-target-root"), `${fixture.child}\n`);
+  await mkdirp(join(fixture.child, ".planning", "state"));
+  await writeFile(
+    join(fixture.child, ".planning", "state", "planning-state-v2.json"),
+    JSON.stringify({
+      schema_version: "v2",
+      feature: "example-feature",
+      current_phase: "3",
+      completed_phases: ["0", "1", "1.5", "1.6", "2", "2.5"],
+      phase_plan_approved: true,
+      planning_active: true,
+      phase_outputs: {
+        "0": {
+          status: "completed",
+          project_index_root: fixture.child,
+          project_index_ok: true,
+          project_index_execution_mode: "background",
+          project_index_waited: true,
+          project_index_job_id: "prior-job-1",
+        },
+      },
+    }, null, 2),
+  );
+
+  const result = await startEarlyIndexFromPrompt({
+    prompt: `/planning tiep tuc '${fixture.source}'`,
+    projectDir: fixture.control,
+    pwd: fixture.control,
+    env: { ...process.env, PATH: `${fake.bin}:${process.env.PATH}`, CALL_LOG: fake.log, PLANNING_CONTROL_ROOT: fixture.control },
+    indexScriptPath: INDEX_SCRIPT,
+  });
+  assert.equal(result.status, "already_indexed", JSON.stringify(result));
+  assert.equal(result.targetRoot, fixture.child);
+  assert.equal(result.jobId, "prior-job-1");
+  // No indexer process may have been launched.
+  await assert.rejects(() => readFile(fake.log, "utf8"));
+
+  // Evidence pointers in state stay untouched.
+  const state = JSON.parse(await readFile(join(fixture.child, ".planning", "state", "planning-state-v2.json"), "utf8"));
+  assert.equal(state.phase_outputs["0"].project_index_job_id, "prior-job-1");
+  assert.equal(state.phase_outputs["0"].project_index_waited, true);
+});
+
+test("early /planning prompt still starts a job when Phase 0 evidence is uncollected", async () => {
+  const fixture = await makeNestedFixture();
+  const fake = await makeFakeIndexers();
+  await mkdirp(join(fixture.control, ".planning", "state"));
+  await writeFile(join(fixture.control, ".planning", "state", "active-target-root"), `${fixture.child}\n`);
+  await mkdirp(join(fixture.child, ".planning", "state"));
+  await writeFile(
+    join(fixture.child, ".planning", "state", "planning-state-v2.json"),
+    JSON.stringify({
+      schema_version: "v2",
+      feature: "example-feature",
+      current_phase: "0",
+      completed_phases: [],
+      phase_plan_approved: false,
+      planning_active: true,
+      phase_outputs: {
+        "0": {
+          status: "completed",
+          project_index_root: fixture.child,
+          project_index_ok: true,
+          project_index_execution_mode: "background",
+          project_index_waited: false,
+        },
+      },
+    }, null, 2),
+  );
+
+  const result = await startEarlyIndexFromPrompt({
+    prompt: `/planning cho '${fixture.source}'`,
+    projectDir: fixture.control,
+    pwd: fixture.control,
+    env: { ...process.env, PATH: `${fake.bin}:${process.env.PATH}`, CALL_LOG: fake.log, PLANNING_CONTROL_ROOT: fixture.control },
+    indexScriptPath: INDEX_SCRIPT,
+  });
+  assert.equal(result.status, "started", JSON.stringify(result));
+  const collected = runIndexScript(["--wait", "--job", result.jobId], {
+    PATH: `${fake.bin}:${process.env.PATH}`, CALL_LOG: fake.log, PLANNING_CONTROL_ROOT: fixture.control,
+  }, fixture.control);
+  assert.equal(collected.status, 0, collected.stderr);
 });

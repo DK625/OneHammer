@@ -19,8 +19,8 @@ const MIN_OPTIONS_PER_QUESTION = 2;
 const PHASE_15_TOTAL_QUESTIONS = 12;
 const PHASE_15_OPTIONAL_ROUND_TOTAL_QUESTIONS = 16;
 const PHASE_16_TOTAL_QUESTIONS = 8;
-const PHASE_15_PO_GUIDANCE = `Phase 1.5 must keep the normal contract of exactly ${PHASE_15_TOTAL_QUESTIONS} business-scope questions in ${PHASE_15_TOTAL_QUESTIONS / QUESTIONS_PER_ROUND} rounds of ${QUESTIONS_PER_ROUND} questions per AskUserQuestion call. Ask like a Product Owner: each question targets a load-bearing business-logic decision (scope cut, priority trade-off, success criterion, edge-case rule, ownership, rollout). No filler, no scattered probes. Every question needs >=${MIN_OPTIONS_PER_QUESTION} concrete options so the user picks instead of free-typing. Round 2/3 must avoid duplicate intent unless a clear followup_reason is provided. If unresolved anomaly exists, include at least one direct anomaly-resolution question in the next round. Optional Round 4 (questions ${PHASE_15_TOTAL_QUESTIONS + 1}-${PHASE_15_OPTIONAL_ROUND_TOTAL_QUESTIONS}) is allowed only for unresolved anomaly resolution and must not contain broad new discovery questions.`;
-const PHASE_16_TEST_GUIDANCE = `Phase 1.6 must collect exactly ${PHASE_16_TOTAL_QUESTIONS} test-clarification questions in ${PHASE_16_TOTAL_QUESTIONS / QUESTIONS_PER_ROUND} rounds of ${QUESTIONS_PER_ROUND} questions per AskUserQuestion call. Ask only high-signal test questions (feature mode: fullstack/fe-only/be-only, critical acceptance path, failure paths, evidence requirement, FE screenshot checkpoint selection for FE-involving modes, environment/seed data, rollout verification, ownership of final sign-off). No filler. Every question needs >=${MIN_OPTIONS_PER_QUESTION} concrete options. Update phase_outputs."1.6".questions_asked after each round and only advance to Phase 2 once questions_asked === ${PHASE_16_TOTAL_QUESTIONS} and test-scenarios.md is written.`;
+const PHASE_15_PO_GUIDANCE = `Phase 1.5 must keep the normal contract of exactly ${PHASE_15_TOTAL_QUESTIONS} business-scope questions in ${PHASE_15_TOTAL_QUESTIONS / QUESTIONS_PER_ROUND} rounds of ${QUESTIONS_PER_ROUND} questions per AskUserQuestion call. Ask like a Product Owner: each question targets a load-bearing business-logic decision (scope cut, priority trade-off, success criterion, edge-case rule, ownership, rollout). No filler, no scattered probes. Write question text, option labels, and option descriptions in Vietnamese (keep established technical terms in English) and put the recommended option FIRST with label suffix ' (Khuyến nghị)' plus a one-sentence why in its description. Every question needs >=${MIN_OPTIONS_PER_QUESTION} concrete options so the user picks instead of free-typing. Round 2/3 must avoid duplicate intent unless a clear followup_reason is provided. If unresolved anomaly exists, include at least one direct anomaly-resolution question in the next round. Optional Round 4 (questions ${PHASE_15_TOTAL_QUESTIONS + 1}-${PHASE_15_OPTIONAL_ROUND_TOTAL_QUESTIONS}) is allowed only for unresolved anomaly resolution and must not contain broad new discovery questions.`;
+const PHASE_16_TEST_GUIDANCE = `Phase 1.6 must collect exactly ${PHASE_16_TOTAL_QUESTIONS} test-clarification questions in ${PHASE_16_TOTAL_QUESTIONS / QUESTIONS_PER_ROUND} rounds of ${QUESTIONS_PER_ROUND} questions per AskUserQuestion call. Ask only high-signal test questions (feature mode: fullstack/fe-only/be-only, critical acceptance path, failure paths, evidence requirement, FE screenshot checkpoint selection for FE-involving modes, environment/seed data, rollout verification, ownership of final sign-off). No filler. Write question text, option labels, and option descriptions in Vietnamese (keep technical terms like fullstack/fe-only/be-only, screenshot, curl in English) and put the recommended option FIRST with label suffix ' (Khuyến nghị)' plus a one-sentence why in its description. Every question needs >=${MIN_OPTIONS_PER_QUESTION} concrete options. Update phase_outputs."1.6".questions_asked after each round and only advance to Phase 2 once questions_asked === ${PHASE_16_TOTAL_QUESTIONS} and test-scenarios.md is written.`;
 import { currentPhaseAtLeast } from "../lib/phase_gates.mjs";
 import {
   DISCOVERY_CONTRACT_BEGIN, DISCOVERY_LANES, REQUIRED_DISCOVERY_SUBAGENT,
@@ -98,9 +98,11 @@ export async function validatePreToolUse(input, projectDir) {
     if (typeof fp === "string" && /(^|\/)history\/[^/]+\/phase-[^/]+-(contract|story-map)\.md$/.test(fp)) {
       return preToolUseDeny(
         `Flat phase artifact path blocked: '${fp}'. ` +
-        `Write contracts to history/<feature>/contracts/phase-<n>-contract.md and story maps to history/<feature>/story-maps/phase-<n>-story-map.md.`,
+        `Write contracts to .planning/history/<feature>/contracts/phase-<n>-contract.md and story maps to .planning/history/<feature>/story-maps/phase-<n>-story-map.md.`,
       );
     }
+    const orderingIssue = validatePhaseArtifactOrdering(fp, projectDir, state);
+    if (orderingIssue) return preToolUseDeny(orderingIssue);
   }
 
   // 3. Block `br create` at phase >= 5 when phase_plan_approved is false.
@@ -111,9 +113,9 @@ export async function validatePreToolUse(input, projectDir) {
     if (/^br\s+create\b/.test(stripped)) {
       if (!lightweight && currentPhaseAtLeast(state, "5") && state.phase_plan_approved !== true) {
         return preToolUseDeny(
-          `br create blocked: Phase 2.5 phase plan not yet approved. ` +
+          `br create blocked: phase_plan_approved is not set. ` +
           `state.phase_plan_approved=${state.phase_plan_approved}, current_phase=${state.current_phase}. ` +
-          `Complete Phase 2.5 approval before decomposition.`,
+          `Phase 2.5 is auto-approved — record phase_plan_approved=true (with phase-plan.md written) in state before decomposition.`,
         );
       }
       const p4Approval = phaseOutput(state, "4_approval") || {};
@@ -181,7 +183,7 @@ export async function validatePreToolUse(input, projectDir) {
         return preToolUseDeny(
           `${lane.label} discovery Agent blocked: this lane is main-agent-owned. ` +
           `Run it directly in the main agent with GitNexus/Serena tools and write ` +
-          `history/${state.feature || "<feature>"}/discovery-lanes/${lane.filename} yourself, then record the lane completed in state. ` +
+          `.planning/history/${state.feature || "<feature>"}/discovery-lanes/${lane.filename} yourself, then record the lane completed in state. ` +
           `Launch a subagent only for the External lane.`,
         );
       }
@@ -210,16 +212,20 @@ export async function validatePreToolUse(input, projectDir) {
   }
 
   // 5. AskUserQuestion — Phase 0 indexes automatically with no question. Allow only
-  //    Phase 1.5 business clarification, Phase 1.6 test clarification, Phase 2.5 approval,
-  //    and Phase 4 approval.
+  //    Phase 1.5 business clarification, Phase 1.6 test clarification, and Phase 4
+  //    approval. Phase 2.5 is auto-approved and never asks.
   if (toolName === "AskUserQuestion") {
     const cp = String(state.current_phase ?? "");
 
-    const allowedPhases = new Set(["1.5", "1.6", "2.5", "4"]);
+    const allowedPhases = new Set(["1.5", "1.6", "4"]);
     if (!allowedPhases.has(cp)) {
+      const phase25Hint = cp === "2.5"
+        ? ` Phase 2.5 is auto-approved: with phase-plan.md written, set phase_plan_approved=true and phase_outputs."2.5" completion in state, then continue directly into Phase 3 without asking.`
+        : "";
       return preToolUseDeny(
         `AskUserQuestion blocked: planning is in phase '${cp}'. ` +
-        `Phase 0 project indexing is automatic and must not ask the user; business questions belong in Phase 1.5, test clarification belongs in Phase 1.6, phase-plan approval belongs in Phase 2.5, and story-map approval belongs in Phase 4.`,
+        `Phase 0 project indexing is automatic and must not ask the user; business questions belong in Phase 1.5, test clarification belongs in Phase 1.6, and story-map approval belongs in Phase 4. Phase 2.5 is auto-approved (no question).` +
+        phase25Hint,
       );
     }
 
@@ -315,13 +321,6 @@ export async function validatePreToolUse(input, projectDir) {
     }
 
 
-    if (cp === "2.5" && !looksLikeExactApprovalQuestion(toolInput)) {
-      return preToolUseDeny(
-        `Phase 2.5 approval must use the exact machine-checkable AskUserQuestion shape: ` +
-        `question 'Approve the phase plan (history/<feature>/phase-plan.md)?' with options Approve and Revise.`,
-      );
-    }
-
     if (cp === "4") {
       const coverageIssue = await validateFeaturePlanCoverageForPhase4Approval(projectDir, state);
       if (coverageIssue) return preToolUseDeny(coverageIssue);
@@ -329,7 +328,7 @@ export async function validatePreToolUse(input, projectDir) {
       if (!looksLikeExactPhase4ApprovalQuestion(toolInput)) {
         return preToolUseDeny(
           `Phase 4 approval must use the exact machine-checkable AskUserQuestion shape: ` +
-          `question 'Approve the story maps (history/<feature>/story-maps/*.md)?' with options Approve and Revise.`,
+          `question 'Approve the story maps (.planning/history/<feature>/story-maps/*.md)?' with options Approve and Revise.`,
         );
       }
     }
@@ -394,6 +393,68 @@ function pathInside(base, candidate) {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
+// Phase artifact ordering — later-phase synthesis artifacts may not be written
+// before the clarification phases finish. This closes the observed drift where
+// approach.md was drafted while Phase 1.5 still had questions_asked=0.
+const PHASE_15_DONE_QUESTIONS = 12;
+const PHASE_16_DONE_QUESTIONS = 8;
+
+function phase15Satisfied(state) {
+  if (completedIncludes(state, "1.5")) return true;
+  return Number(phaseOutput(state, "1.5")?.questions_asked ?? 0) >= PHASE_15_DONE_QUESTIONS;
+}
+
+function phase16Satisfied(state) {
+  if (completedIncludes(state, "1.6")) return true;
+  return Number(phaseOutput(state, "1.6")?.questions_asked ?? 0) >= PHASE_16_DONE_QUESTIONS;
+}
+
+function clarificationsSatisfied(state) {
+  return phase15Satisfied(state) && phase16Satisfied(state);
+}
+
+const PHASE2_PLUS_REQUIREMENT =
+  `Complete Phase 1.5 (12/12 questions + requirements.md) and Phase 1.6 (8/8 questions + test-scenarios.md) first; ` +
+  `only then continue to Phase 2+ synthesis artifacts.`;
+
+const PHASE_ARTIFACT_ORDER_RULES = [
+  {
+    re: /(^|\/)requirements\.md$/,
+    allowed: phase15Satisfied,
+    requirement: `requirements.md is the Phase 1.5 synthesis output: ask the 12 PO-style questions (3 rounds of 4 via AskUserQuestion) and record phase_outputs."1.5".questions_asked=12 before writing it.`,
+  },
+  {
+    re: /(^|\/)test-scenarios\.md$/,
+    allowed: (state) => phase15Satisfied(state) && phase16Satisfied(state),
+    requirement: `test-scenarios.md is the Phase 1.6 synthesis output: finish Phase 1.5 (12/12) and ask the 8 test-clarification questions (2 rounds of 4) with phase_outputs."1.6".questions_asked=8 before writing it.`,
+  },
+  { re: /(^|\/)approach\.md$/, allowed: clarificationsSatisfied, requirement: PHASE2_PLUS_REQUIREMENT },
+  { re: /(^|\/)phase-plan\.md$/, allowed: clarificationsSatisfied, requirement: PHASE2_PLUS_REQUIREMENT },
+  { re: /(^|\/)contracts\/phase-[^/]+-contract\.md$/, allowed: clarificationsSatisfied, requirement: PHASE2_PLUS_REQUIREMENT },
+  { re: /(^|\/)story-maps\/phase-[^/]+-story-map\.md$/, allowed: clarificationsSatisfied, requirement: PHASE2_PLUS_REQUIREMENT },
+];
+
+function validatePhaseArtifactOrdering(fp, projectDir, state) {
+  if (typeof fp !== "string" || !fp.trim() || !state?.feature) return null;
+
+  const rule = PHASE_ARTIFACT_ORDER_RULES.find((candidate) => candidate.re.test(fp.replace(/\\/g, "/")));
+  if (!rule) return null;
+
+  // Only gate writes inside the active feature workspace so unrelated repo files
+  // that happen to share a name (e.g. docs/approach.md) stay untouched.
+  const workspace = featureWorkspacePath(projectDir, state);
+  const target = resolvePlanningPath(projectDir, state, fp);
+  if (!workspace || !target || !pathInside(workspace, target)) return null;
+
+  if (rule.allowed(state)) return null;
+
+  const asked15 = Number(phaseOutput(state, "1.5")?.questions_asked ?? 0);
+  const asked16 = Number(phaseOutput(state, "1.6")?.questions_asked ?? 0);
+  return `Phase artifact ordering blocked: '${fp}' may not be written yet ` +
+    `(current_phase=${state.current_phase}, 1.5 questions_asked=${asked15}, 1.6 questions_asked=${asked16}). ` +
+    rule.requirement;
+}
+
 function validateHistoryWriteTarget(toolName, toolInput, projectDir, state) {
   if (!["Write", "Edit", "MultiEdit"].includes(toolName)) return null;
   const fp =
@@ -404,9 +465,11 @@ function validateHistoryWriteTarget(toolName, toolInput, projectDir, state) {
   const feature = String(state.feature).trim();
   if (!feature) return null;
   const normalized = String(fp).replace(/\\/g, "/").replace(/^\.\/+/, "");
-  const relPrefix = `history/${feature}`;
+  // Canonical prefix plus the legacy pre-relocation prefix.
+  const relPrefixes = [`.planning/history/${feature}`, `history/${feature}`];
   const isActiveRelativeHistory =
-    !isAbsolute(fp) && (normalized === relPrefix || normalized.startsWith(`${relPrefix}/`));
+    !isAbsolute(fp) &&
+    relPrefixes.some((relPrefix) => normalized === relPrefix || normalized.startsWith(`${relPrefix}/`));
 
   const expectedWorkspace = featureWorkspacePath(projectDir, state);
   if (!expectedWorkspace) return null;
@@ -421,10 +484,13 @@ function validateHistoryWriteTarget(toolName, toolInput, projectDir, state) {
 
   if (isAbsolute(fp)) {
     const actual = resolve(fp);
-    const controlWorkspace = resolve(controlRoot, "history", feature);
+    const controlWorkspaces = [
+      resolve(controlRoot, ".planning", "history", feature),
+      resolve(controlRoot, "history", feature),
+    ];
     const looksLikeWrongControlWorkspace =
       selectedHistoryRoot !== controlRoot &&
-      pathInside(controlWorkspace, actual) &&
+      controlWorkspaces.some((controlWorkspace) => pathInside(controlWorkspace, actual)) &&
       !pathInside(expectedWorkspace, actual);
     if (looksLikeWrongControlWorkspace) {
       return `Target-repo-scoped history write blocked: '${actual}' is under CONTROL_ROOT history, ` +
@@ -611,11 +677,11 @@ function expectedResumeArtifacts(state) {
   if (!feature) return [];
 
   const artifacts = [
-    `history/${feature}/discovery.md`,
-    `history/${feature}/discovery-lanes/1-architecture.md`,
-    `history/${feature}/discovery-lanes/2-patterns.md`,
-    `history/${feature}/discovery-lanes/3-constraints.md`,
-    `history/${feature}/discovery-lanes/4-external.md`,
+    `.planning/history/${feature}/discovery.md`,
+    `.planning/history/${feature}/discovery-lanes/1-architecture.md`,
+    `.planning/history/${feature}/discovery-lanes/2-patterns.md`,
+    `.planning/history/${feature}/discovery-lanes/3-constraints.md`,
+    `.planning/history/${feature}/discovery-lanes/4-external.md`,
   ];
 
   const p1 = phaseOutput(state, "1");
@@ -689,7 +755,7 @@ function cleanRequirementPath(value) {
 }
 
 async function findLatestRequirementSource(projectDir, state, feature) {
-  const requirementsDir = resolvePlanningPath(projectDir, state, `history/${feature}/requirements`);
+  const requirementsDir = resolvePlanningPath(projectDir, state, `.planning/history/${feature}/requirements`);
   if (!(await fileExists(requirementsDir))) return null;
 
   let entries;
@@ -720,7 +786,7 @@ async function findLatestRequirementSource(projectDir, state, feature) {
     return b.name.localeCompare(a.name);
   });
 
-  return `history/${feature}/requirements/${scored[0].name}`;
+  return `.planning/history/${feature}/requirements/${scored[0].name}`;
 }
 
 async function discoveryLaneStatus(projectDir, state, laneId) {
@@ -728,7 +794,7 @@ async function discoveryLaneStatus(projectDir, state, laneId) {
   const ledger = p1?.lanes?.[laneId];
   const lane = DISCOVERY_LANES.find((candidate) => candidate.id === laneId);
   if (!lane || !state.feature) return classifyDiscoveryLaneLedger(ledger, false);
-  const rel = `history/${state.feature}/discovery-lanes/${lane.filename}`;
+  const rel = `.planning/history/${state.feature}/discovery-lanes/${lane.filename}`;
   const artifactExists = await fileExists(resolvePlanningPath(projectDir, state, rel));
   return classifyDiscoveryLaneLedger(ledger, artifactExists);
 }
@@ -918,22 +984,11 @@ function validatePhase16RoundSemantics(toolInput, asked) {
   return null;
 }
 
-function looksLikeExactApprovalQuestion(toolInput) {
-  const q = normalizeSingleQuestion(toolInput);
-  if (!q) return false;
-
-  return /^Approve the phase plan \(history\/[^/]+\/phase-plan\.md\)\?$/.test(q.question) &&
-    q.header === "Phase Plan Approval" &&
-    q.labels.length === 2 &&
-    q.labels[0] === "Approve" &&
-    q.labels[1] === "Revise";
-}
-
 function looksLikeExactPhase4ApprovalQuestion(toolInput) {
   const q = normalizeSingleQuestion(toolInput);
   if (!q) return false;
 
-  return /^Approve the story maps \(history\/[^/]+\/story-maps\/\*\.md\)\?$/.test(q.question) &&
+  return /^Approve the story maps \((?:\.planning\/)?history\/[^/]+\/story-maps\/\*\.md\)\?$/.test(q.question) &&
     q.header === "Phase 4 Approval" &&
     q.labels.length === 2 &&
     q.labels[0] === "Approve" &&
@@ -984,7 +1039,9 @@ export function validatePhase5VerificationClauses(command, state) {
   const hasFollowUpChain = /(follow-?up\s+test\s+bead|create\s+.*test\s+bead.*(after|next)|br\s+dep\s+add|depends\s+on|blocked\s+by)/.test(lower);
 
   const hasNoMigrationExpectation = /(no\s+migration\s+expected|migration\s*:\s*none|no\s+schema\s+change|schema\s*unchanged)/.test(lower);
-  const hasMigrationRequiredCue = /(migration\s+(required|expected)|create\s+migration|apply\s+migration|alembic\s+revision|schema\s+change\s+required|data\s+migration\s+required|seed\s+required|bootstrap\s+required)/.test(lower);
+  // Lookbehind keeps the canonical "no migration expected" phrasing from
+  // matching as a migration-required cue.
+  const hasMigrationRequiredCue = /((?<!\bno\s)migration\s+(required|expected)|create\s+migration|apply\s+migration|alembic\s+revision|schema\s+change\s+required|data\s+migration\s+required|seed\s+required|bootstrap\s+required)/.test(lower);
   const hasMigrationExpectation = hasNoMigrationExpectation || hasMigrationRequiredCue;
   const hasMigrationApplyCommand = /(migration\s+(apply|command)|apply\s+migration|migrate\s+(up|deploy|latest)|alembic\s+upgrade(?:\s+head)?|prisma\s+migrate\s+deploy|flyway\s+migrate|liquibase\s+update|manage\.py\s+migrate|rails\s+db:migrate|knex\s+migrate:latest|sequelize\s+db:migrate|goose\s+up|repo[- ]specific\s+migration\s+command|project[- ]specific\s+migration\s+command)/.test(lower);
 
@@ -1167,8 +1224,8 @@ async function collectFeaturePlanCoverage(projectDir, state) {
 
   const missing = [];
   for (const n of phaseNumbers) {
-    const contractRel = `history/${feature}/contracts/phase-${n}-contract.md`;
-    const storyRel = `history/${feature}/story-maps/phase-${n}-story-map.md`;
+    const contractRel = `.planning/history/${feature}/contracts/phase-${n}-contract.md`;
+    const storyRel = `.planning/history/${feature}/story-maps/phase-${n}-story-map.md`;
     if (!(await fileExists(resolvePlanningPath(projectDir, state, contractRel)))) missing.push(contractRel);
     if (!(await fileExists(resolvePlanningPath(projectDir, state, storyRel)))) missing.push(storyRel);
   }

@@ -33,14 +33,12 @@ const PHASE_ZERO_BOOL_FIELDS = [
   "jq_ok",
 ];
 const LIGHTWEIGHT_SKIPPABLE_PHASES = new Set(["2.5", "3", "4"]);
-const PHASE7_READY_VERDICTS = new Set(["READY", "READY_LITE", "READY_TARGETED"]);
-const PHASE7_VALIDATION_MODES = new Set(["mechanical_lite", "targeted", "full"]);
 
 const DISCOVERY_LANE_PATHS = [
-  { id: "architecture", label: "Architecture", rel: (feature) => `history/${feature}/discovery-lanes/1-architecture.md` },
-  { id: "patterns", label: "Patterns", rel: (feature) => `history/${feature}/discovery-lanes/2-patterns.md` },
-  { id: "constraints", label: "Constraints", rel: (feature) => `history/${feature}/discovery-lanes/3-constraints.md` },
-  { id: "external", label: "External", rel: (feature) => `history/${feature}/discovery-lanes/4-external.md` },
+  { id: "architecture", label: "Architecture", rel: (feature) => `.planning/history/${feature}/discovery-lanes/1-architecture.md` },
+  { id: "patterns", label: "Patterns", rel: (feature) => `.planning/history/${feature}/discovery-lanes/2-patterns.md` },
+  { id: "constraints", label: "Constraints", rel: (feature) => `.planning/history/${feature}/discovery-lanes/3-constraints.md` },
+  { id: "external", label: "External", rel: (feature) => `.planning/history/${feature}/discovery-lanes/4-external.md` },
 ];
 const PHASE_1_LAUNCH_GUIDANCE = `IMPORTANT: Phase 0 succeeded; start Phase 1 immediately. If the External lane is missing, copy the exact ${DISCOVERY_CONTRACT_BEGIN} prompt block from .claude/skills/planning/references/launch-discovery-agents.md, substitute the actual feature/artifact, and launch it FIRST as subagent_type="general-purpose" with run_in_background=true — exactly one Agent call in its own message (multi-call batches risk truncation). Then, while it runs, execute the Architecture, Patterns, and Constraints lanes in the main agent itself using GitNexus/Serena and write 1-architecture.md, 2-patterns.md, and 3-constraints.md directly (evidence-dense, decision-complete; see the launcher content bar) — never spawn subagents for them. Do not pre-mark the External lane running. Record status="running" only after an accepted launch with agent_id/launch_id (or attempt_id plus launch_confirmed_at). A running lane without launch identity is orphaned/retryable. After all four canonical files exist, read/verify them, fill only specific gaps, compile discovery.md, and record completion state.`;
 
@@ -51,12 +49,12 @@ const PHASE_16_TOTAL_QUESTIONS = 8;
 const PHASE_15_GUIDANCE_TEMPLATE = (asked) => {
   const round = Math.floor(asked / QUESTIONS_PER_ROUND) + 1;
   const totalRounds = PHASE_15_TOTAL_QUESTIONS / QUESTIONS_PER_ROUND;
-  return `IMPORTANT: Phase 1.5 — business clarification. Keep the normal contract: ${PHASE_15_TOTAL_QUESTIONS} total questions across ${totalRounds} rounds, exactly ${QUESTIONS_PER_ROUND} per AskUserQuestion call. Currently asked=${asked}, next round index=${round}. Each question must target one load-bearing business decision (scope cut, priority trade-off, success criterion, edge-case rule, ownership, rollout) and expose >=2 concrete options the user can pick. Round 2/3 must avoid duplicate intent unless followup_reason is explicit. If anomaly_scan.unresolved_count > 0, include direct anomaly-resolution questions (keep/remove/deprecate/migrate/ignore intentionally). After ${PHASE_15_TOTAL_QUESTIONS} questions, optional Round 4 is allowed only for unresolved anomaly and must be resolution-only (no broad new discovery). Hard cap is ${PHASE_15_OPTIONAL_ROUND_TOTAL_QUESTIONS} questions.`;
+  return `IMPORTANT: Phase 1.5 — business clarification. Keep the normal contract: ${PHASE_15_TOTAL_QUESTIONS} total questions across ${totalRounds} rounds, exactly ${QUESTIONS_PER_ROUND} per AskUserQuestion call. Currently asked=${asked}, next round index=${round}. Ask in Vietnamese (technical terms stay English) and put the recommended option FIRST with label suffix ' (Khuyến nghị)' and a one-sentence why in its description. Each question must target one load-bearing business decision (scope cut, priority trade-off, success criterion, edge-case rule, ownership, rollout) and expose >=2 concrete options the user can pick. Round 2/3 must avoid duplicate intent unless followup_reason is explicit. If anomaly_scan.unresolved_count > 0, include direct anomaly-resolution questions (keep/remove/deprecate/migrate/ignore intentionally). After ${PHASE_15_TOTAL_QUESTIONS} questions, optional Round 4 is allowed only for unresolved anomaly and must be resolution-only (no broad new discovery). Hard cap is ${PHASE_15_OPTIONAL_ROUND_TOTAL_QUESTIONS} questions.`;
 };
 const PHASE_16_GUIDANCE_TEMPLATE = (asked) => {
   const round = Math.floor(asked / QUESTIONS_PER_ROUND) + 1;
   const totalRounds = PHASE_16_TOTAL_QUESTIONS / QUESTIONS_PER_ROUND;
-  return `IMPORTANT: Phase 1.6 — test clarification. Ask exactly ${PHASE_16_TOTAL_QUESTIONS} high-signal test questions across ${totalRounds} rounds (${QUESTIONS_PER_ROUND} per AskUserQuestion). Cover feature mode classification (fullstack/fe-only/be-only), acceptance proof, failure-path proof, evidence artifacts, FE screenshot timing checkpoints (before/after important action + final) for FE-involving modes, environment/data setup, rollout verification, and sign-off owner. After each round increment phase_outputs."1.6".questions_asked by ${QUESTIONS_PER_ROUND}. When questions_asked === ${PHASE_16_TOTAL_QUESTIONS}, write test-scenarios.md with mode-aware FE/BE/integration evidence matrix, then continue immediately to Phase 2 and Phase 2.5 approval prep without extra pause.`;
+  return `IMPORTANT: Phase 1.6 — test clarification. Ask exactly ${PHASE_16_TOTAL_QUESTIONS} high-signal test questions across ${totalRounds} rounds (${QUESTIONS_PER_ROUND} per AskUserQuestion). Ask in Vietnamese (technical terms stay English) and put the recommended option FIRST with label suffix ' (Khuyến nghị)' and a one-sentence why in its description. Cover feature mode classification (fullstack/fe-only/be-only), acceptance proof, failure-path proof, evidence artifacts, FE screenshot timing checkpoints (before/after important action + final) for FE-involving modes, environment/data setup, rollout verification, and sign-off owner. After each round increment phase_outputs."1.6".questions_asked by ${QUESTIONS_PER_ROUND}. When questions_asked === ${PHASE_16_TOTAL_QUESTIONS}, write test-scenarios.md with mode-aware FE/BE/integration evidence matrix, then continue immediately through Phase 2 and auto-approved Phase 2.5 (set phase_plan_approved=true; no approval question) into Phase 3 without extra pause.`;
 };
 
 export async function validatePostToolUse(input, projectDir) {
@@ -73,7 +71,7 @@ export async function validatePostToolUse(input, projectDir) {
       if (/(^|\/)history\/[^/]+\/phase-[^/]+-(contract|story-map)\.md$/.test(fp)) {
         return topLevelBlock(
           `Flat phase artifact path blocked: '${fp}'. ` +
-          `Write contracts to history/<feature>/contracts/phase-<n>-contract.md and story maps to history/<feature>/story-maps/phase-<n>-story-map.md.`,
+          `Write contracts to .planning/history/<feature>/contracts/phase-<n>-contract.md and story maps to .planning/history/<feature>/story-maps/phase-<n>-story-map.md.`,
         );
       }
 
@@ -164,7 +162,7 @@ export async function validatePostToolUse(input, projectDir) {
         const cyclesIssue = detectCycles(stdout);
         if (cyclesIssue) {
           return topLevelBlock(
-            `bv --robot-insights reported cycles. Phase 7 gate blocks until cycles are []. ` +
+            `bv --robot-insights reported cycles. Phase 6 gate blocks until cycles are []. ` +
             `Cycles found: ${cyclesIssue}. Fix circular deps and re-run.`,
           );
         }
@@ -188,7 +186,7 @@ function validateDiscoveryLaneArtifactPath(fp) {
   const canonical = unnumbered
     ? DISCOVERY_LANE_PATHS.find((lane) => lane.id === unnumbered[1])?.rel(feature)
     : null;
-  const allowedList = DISCOVERY_LANE_PATHS.map((lane) => `history/${feature}/discovery-lanes/${lane.rel(feature).split("/").pop()}`).join(", ");
+  const allowedList = DISCOVERY_LANE_PATHS.map((lane) => lane.rel(feature)).join(", ");
   return canonical
     ? `Phase 1 discovery lane artifact must use canonical numbered filename. Write ${canonical} instead of ${prefix}${filename}.`
     : `Invalid Phase 1 discovery lane artifact path ${prefix}${filename}. Use one of: ${allowedList}.`;
@@ -237,7 +235,7 @@ async function phase2ContinuityGuidance(projectDir) {
   if (state.phase_plan_approved === true) return null;
   return additionalContext(
     "PostToolUse",
-    "IMPORTANT: Phase 2 should run continuously into Phase 2.5 approval prep. After writing approach.md, immediately write phase-plan.md and issue the exact Phase 2.5 approval AskUserQuestion. Do not insert extra confirmation pauses before the approval prompt.",
+    "IMPORTANT: Phase 2 should run continuously through auto-approved Phase 2.5 into Phase 3. After writing approach.md, immediately write phase-plan.md, set phase_plan_approved=true with phase_outputs.\"2.5\" completion in state (Phase 2.5 is auto-approved — never issue an approval AskUserQuestion), and continue directly into Phase 3.",
   );
 }
 
@@ -251,18 +249,18 @@ async function phase3Phase4ContinuityGuidance(projectDir) {
   if (cp === "3") {
     return additionalContext(
       "PostToolUse",
-      "IMPORTANT: After Phase 2.5 approval, continue in one run through Phase 3 and Phase 4. Before asking Phase 4 approval in full mode, ensure every phase declared in phase-plan.md has both artifacts: history/<feature>/contracts/phase-<n>-contract.md and history/<feature>/story-maps/phase-<n>-story-map.md.",
+      "IMPORTANT: After auto-approved Phase 2.5, continue in one run through Phase 3 and Phase 4. Before asking Phase 4 approval in full mode, ensure every phase declared in phase-plan.md has both artifacts: .planning/history/<feature>/contracts/phase-<n>-contract.md and .planning/history/<feature>/story-maps/phase-<n>-story-map.md.",
     );
   }
 
   if (cp === "4") {
     return additionalContext(
       "PostToolUse",
-      "IMPORTANT: Phase 4 should end with the exact approval AskUserQuestion for the whole story-map set (Approve/Revise). Do not insert extra confirmation pauses before that approval prompt. After exact Approve, continue immediately in one run through Phase 5 and Phase 7, then stop planning when Phase 7 records a READY* verdict.",
+      "IMPORTANT: Phase 4 should end with the exact approval AskUserQuestion for the whole story-map set (Approve/Revise). Do not insert extra confirmation pauses before that approval prompt. After exact Approve, continue immediately in one run through Phase 5 (materialize_beads.mjs) and Phase 6, then stop planning when Phase 6 records cycles_found=0 and planning_active=false.",
     );
   }
 
-  if (["5", "7"].includes(cp)) {
+  if (["5", "6"].includes(cp)) {
     const p4Approval = state.phase_outputs?.["4_approval"];
     const approved =
       p4Approval &&
@@ -273,7 +271,7 @@ async function phase3Phase4ContinuityGuidance(projectDir) {
     if (approved) {
       return additionalContext(
         "PostToolUse",
-        "IMPORTANT: Phase 4 was approved. Continue planning in one run with no extra confirmation pauses: Phase 5 decomposition -> Phase 7 validation -> stop with the validated bead graph/state on READY/READY_LITE/READY_TARGETED.",
+        "IMPORTANT: Phase 4 was approved. Continue planning in one run with no extra confirmation pauses: Phase 5 script-based bead materialization (materialize_beads.mjs) -> Phase 6 graph validation -> stop with the validated bead graph/state (cycles_found=0, planning_active=false).",
       );
     }
   }
@@ -347,10 +345,13 @@ async function validateStateTransition(projectDir) {
 
   const p25 = po["2.5"];
   if (p25 && p25.status === "completed") {
-    if (state.phase_plan_approved !== true || p25.approved !== true || p25.approval_response !== "Approve") {
+    // Phase 2.5 is auto-approved (no AskUserQuestion). Legacy states carry
+    // approval_response="Approve"; new states record approval="auto".
+    const autoApproved = p25.approval === "auto" || p25.approval_response === "Approve";
+    if (state.phase_plan_approved !== true || p25.approved !== true || !autoApproved) {
       return topLevelBlock(
-        `Phase 2.5 marked completed but approval invariants are not satisfied. ` +
-        `Require state.phase_plan_approved=true, phase_outputs.2.5.approved=true, and approval_response="Approve".`,
+        `Phase 2.5 marked completed but auto-approval invariants are not satisfied. ` +
+        `Require state.phase_plan_approved=true, phase_outputs.2.5.approved=true, and approval="auto" (Phase 2.5 has no approval question).`,
       );
     }
   }
@@ -358,9 +359,9 @@ async function validateStateTransition(projectDir) {
   const completed = Array.isArray(state.completed_phases)
     ? state.completed_phases.map(String)
     : [];
-  const p7 = po["7"] || {};
-  const phase7GateIssue = validatePhase7AtomicGate(state, p7, { completed });
-  if (phase7GateIssue) return topLevelBlock(phase7GateIssue);
+  const p6 = po["6"] || {};
+  const phase6GateIssue = validatePhase6AtomicGate(state, p6, { completed });
+  if (phase6GateIssue) return topLevelBlock(phase6GateIssue);
 
   const p4Approval = po["4_approval"];
   if (phaseIndex(String(state.current_phase ?? "")) >= phaseIndex("5") && !isLightweightMode(state)) {
@@ -420,53 +421,32 @@ async function validateStateTransition(projectDir) {
   return null;
 }
 
-function validatePhase7AtomicGate(state, p7, { completed }) {
-  const hasPhase7Record = p7 && Object.keys(p7).length > 0;
-  if (!hasPhase7Record) return null;
+function validatePhase6AtomicGate(state, p6, { completed }) {
+  const hasPhase6Record = p6 && Object.keys(p6).length > 0;
+  if (!hasPhase6Record) return null;
 
-  if (p7.status !== "completed") {
+  if (p6.status !== "completed") {
     return null;
   }
 
-  const mode = String(p7.validation_mode ?? "");
-  if (!PHASE7_VALIDATION_MODES.has(mode)) {
-    return `Phase 7 marked completed but validation_mode is invalid (${p7.validation_mode ?? "missing"}). ` +
-      `Require one of: ${Array.from(PHASE7_VALIDATION_MODES).join("/")}.`;
-  }
-
-  const cyclesFound = Number(p7.cycles_found);
+  const cyclesFound = Number(p6.cycles_found);
   if (!Number.isFinite(cyclesFound) || cyclesFound !== 0) {
-    return `Phase 7 marked completed but cycles_found must be 0 (current: ${p7.cycles_found ?? "missing"}).`;
+    return `Phase 6 marked completed but cycles_found must be 0 (current: ${p6.cycles_found ?? "missing"}).`;
   }
 
-  const verdict = String(p7.semantic_verdict ?? "");
-  if (!PHASE7_READY_VERDICTS.has(verdict)) {
-    return `Phase 7 marked completed but semantic validation is incomplete. ` +
-      `Require semantic_verdict in ${Array.from(PHASE7_READY_VERDICTS).join("/")} before completing terminal Phase 7.`;
+  if (!completed.includes("6")) {
+    return `Phase 6 marked completed but completed_phases is missing \"6\". ` +
+      `Add \"6\" in the same atomic terminal state update.`;
   }
 
-  const validatorId = p7.validator_invocation_id;
-  if (mode === "full") {
-    if (typeof validatorId !== "string" || validatorId.trim().length === 0) {
-      return "Phase 7 validation_mode=full requires validator_invocation_id from skill(planning-validator).";
-    }
-  } else if (validatorId != null) {
-    return `Phase 7 validation_mode=${mode} requires validator_invocation_id=null (planning-validator is full-only).`;
-  }
-
-  if (!completed.includes("7")) {
-    return `Phase 7 marked completed but completed_phases is missing \"7\". ` +
-      `Add \"7\" in the same atomic terminal state update.`;
-  }
-
-  if (String(state.current_phase ?? "") !== "7") {
-    return `Phase 7 marked completed with a READY* verdict but current_phase must remain \"7\" as the terminal planning phase ` +
+  if (String(state.current_phase ?? "") !== "6") {
+    return `Phase 6 marked completed but current_phase must remain \"6\" as the terminal planning phase ` +
       `(current: ${state.current_phase ?? "missing"}).`;
   }
 
   if (state.planning_active !== false) {
-    return `Phase 7 marked completed with a READY* verdict but planning_active must be false. ` +
-      `End the mandatory planning pipeline atomically at Phase 7.`;
+    return `Phase 6 marked completed but planning_active must be false. ` +
+      `End the mandatory planning pipeline atomically at Phase 6.`;
   }
 
   return null;
@@ -511,8 +491,8 @@ async function validateFeaturePlanCoverageForBeads(projectDir, state, phaseOutpu
 
   const missing = [];
   for (const n of phaseNumbers) {
-    const contractRel = `history/${feature}/contracts/phase-${n}-contract.md`;
-    const storyRel = `history/${feature}/story-maps/phase-${n}-story-map.md`;
+    const contractRel = `.planning/history/${feature}/contracts/phase-${n}-contract.md`;
+    const storyRel = `.planning/history/${feature}/story-maps/phase-${n}-story-map.md`;
     if (!(await fileExists(resolvePlanningPath(projectDir, state, contractRel)))) missing.push(contractRel);
     if (!(await fileExists(resolvePlanningPath(projectDir, state, storyRel)))) missing.push(storyRel);
   }
@@ -532,14 +512,14 @@ async function validatePhase5BeadCoverage(projectDir, state, phaseOutputs) {
     ? state.completed_phases.map(String)
     : [];
   const p5 = phaseOutputs?.["5"] || {};
-  const p7 = phaseOutputs?.["7"] || {};
+  const p6 = phaseOutputs?.["6"] || {};
   const curIdx = phaseIndex(String(state.current_phase ?? ""));
-  const phase7Reached =
-    curIdx >= phaseIndex("7") ||
-    completed.includes("7") ||
-    ["completed", "in_progress"].includes(String(p7.status ?? ""));
+  const phase6Reached =
+    curIdx >= phaseIndex("6") ||
+    completed.includes("6") ||
+    ["completed", "in_progress"].includes(String(p6.status ?? ""));
 
-  if (!phase7Reached) return null;
+  if (!phase6Reached) return null;
 
   const feature = String(state.feature ?? "").trim();
   if (!feature) {
@@ -563,14 +543,16 @@ async function validatePhase5BeadCoverage(projectDir, state, phaseOutputs) {
       `Expected headings like 'Phase 1:', 'Phase 2:', ...`;
   }
 
-  const expectedStoryMaps = phaseNumbers.map((n) => `history/${feature}/story-maps/phase-${n}-story-map.md`);
+  const expectedStoryMaps = phaseNumbers.map((n) => `.planning/history/${feature}/story-maps/phase-${n}-story-map.md`);
+  // Accept legacy `history/...` recordings from pre-relocation state files.
+  const canonicalStoryMapPath = (p) => String(p || "").trim().replace(/^(?:\.\/)?history\//, ".planning/history/");
   const recordedStoryMaps = Array.isArray(p5.story_map_paths)
-    ? p5.story_map_paths.map((p) => String(p || "").trim()).filter(Boolean)
+    ? p5.story_map_paths.map(canonicalStoryMapPath).filter(Boolean)
     : [];
 
   if (recordedStoryMaps.length === 0) {
     return "Phase 5 bead coverage gate failed: phase_outputs.5.story_map_paths is missing. " +
-      "Record all story-map files covered by bead decomposition before advancing to Phase 7.";
+      "Record all story-map files covered by bead decomposition before advancing to Phase 6.";
   }
 
   const missingFromState = expectedStoryMaps.filter((rel) => !recordedStoryMaps.includes(rel));
@@ -600,7 +582,7 @@ async function validatePhase5BeadCoverage(projectDir, state, phaseOutputs) {
 
   if (uncoveredMaps.length > 0) {
     return `Phase 5 bead coverage gate failed: story-map to bead mapping is incomplete for declared phases: ${uncoveredMaps.join(", ")}. ` +
-      "Fill Story-To-Bead mapping with real canonical Beads issue IDs for every declared phase before Phase 7.";
+      "Fill Story-To-Bead mapping with real canonical Beads issue IDs for every declared phase before Phase 6.";
   }
 
   return null;
@@ -762,14 +744,14 @@ async function validatePhase0Evidence(projectDir, state, p0) {
 
   const featurePath = String(p0.feature_path ?? "").trim();
   if (!featurePath) {
-    return "Phase 0 marked completed but phase_outputs.0.feature_path is missing. Record target-repo-relative history/<feature>/ as part of pre-flight.";
+    return "Phase 0 marked completed but phase_outputs.0.feature_path is missing. Record target-repo-relative .planning/history/<feature>/ as part of pre-flight.";
   }
 
   const expectedWorkspace = featureWorkspacePath(projectDir, state);
   const recordedWorkspace = resolvePlanningPath(projectDir, state, featurePath);
   const selectedRoot = historyRoot(state, projectDir);
   if (!expectedWorkspace || recordedWorkspace !== expectedWorkspace) {
-    return `Phase 0 marked completed but phase_outputs.0.feature_path must resolve to target-repo-scoped history/${feature}/ ` +
+    return `Phase 0 marked completed but phase_outputs.0.feature_path must resolve to target-repo-scoped .planning/history/${feature}/ ` +
       `under ${selectedRoot} (current: ${featurePath}).`;
   }
 

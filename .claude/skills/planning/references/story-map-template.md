@@ -1,11 +1,11 @@
 # Story Map: Phase <N> - <Phase Name>
 
-Save to `history/<feature>/story-maps/phase-<n>-story-map.md`.
+Save to `.planning/history/<feature>/story-maps/phase-<n>-story-map.md`.
 
 **Date**: <YYYY-MM-DD>
-**Phase Plan**: `history/<feature>/phase-plan.md`
-**Phase Contract**: `history/<feature>/contracts/phase-<n>-contract.md`
-**Approach Reference**: `history/<feature>/approach.md`
+**Phase Plan**: `.planning/history/<feature>/phase-plan.md`
+**Phase Contract**: `.planning/history/<feature>/contracts/phase-<n>-contract.md`
+**Approach Reference**: `.planning/history/<feature>/approach.md`
 
 ---
 
@@ -98,10 +98,49 @@ If any box is unchecked, revise the map before creating beads.
 
 ## 5. Story-To-Bead Mapping
 
-> Fill this in after bead creation so validating and swarming can see how the narrative maps to executable work. Use the exact canonical issue IDs returned by `br create` / `br list --json`, preserving whatever project prefix the active repository uses; do not assume a fixed prefix and do not write short aliases such as `br-*`.
+> Write `<bead:KEY>` tokens here (matching the `key` values in the Bead Specs block below). Do NOT invent issue IDs by hand: `materialize_beads.mjs` replaces every `<bead:KEY>` token with the exact canonical issue ID returned by `br create` when Phase 5 runs. Never write short aliases such as `br-*`.
 
 | Story | Beads | Notes |
 |-------|-------|-------|
-| Story 1: `<name>` | `<actual-beads-id>, <actual-beads-id>` | `<shared context or dependency note>` |
-| Story 2: `<name>` | `<actual-beads-id>, <actual-beads-id>` | `<shared context or dependency note>` |
-| Story 3: `<name>` | `<actual-beads-id>, <actual-beads-id>` | `<shared context or dependency note>` |
+| Story 1: `<name>` | `<bead:p1-s1-be>` | `<shared context or dependency note>` |
+| Story 2: `<name>` | `<bead:p1-s2-be>` | `<shared context or dependency note>` |
+| Story 3: `<name>` | `<bead:p1-s3-be>, <bead:p1-s3-fe>` | `<shared context or dependency note>` |
+
+---
+
+## 6. Bead Specs (machine-readable)
+
+> This block is the deterministic input for `node .claude/hooks/planning/materialize_beads.mjs --feature <feature>`. The script — not the LLM — runs `br create` and `br dep add` from it, so what the reviewer approves in Phase 4 is exactly what materializes in Phase 5.
+>
+> Rules:
+> - `key` is globally unique across ALL phase story-maps of the feature (convention: `p<phase>-s<story>-<surface>`, e.g. `p1-s1-be`, `p3-s1-fe`).
+> - `depends_on` lists other spec keys (cross-phase allowed) or, rarely, an existing canonical issue ID. Only real prerequisites — keep independent beads parallel-ready (fan-out/fan-in, not a forced chain).
+> - `description` must be complete for a fresh worker and must carry every mandatory clause from SKILL.md Phase 5 (technical contract, surface-matching BE/FE verification clauses, migration/provisioning decision, completion evidence gate, test session budget). The script validates these clauses with the same rules the hook applies and refuses to create beads when one is missing.
+> - `labels` must include the feature slug, `phase-<n>`, and the surface (`be`/`fe`/`test`/`docs`).
+
+```json bead-specs
+{
+  "beads": [
+    {
+      "key": "p1-s1-be",
+      "story": "Story 1: <name>",
+      "title": "[<feature>][P1.S1] <title>",
+      "type": "task",
+      "priority": 1,
+      "labels": ["<feature>", "phase-1", "be"],
+      "depends_on": [],
+      "description": "<full clause-bearing description: context for a fresh worker + Technical Contract (API/DB/config source-of-truth) + BE verification clause (curl/API + auth/token + expected status/response) + migration/provisioning decision clause + Completion Evidence Gate (no br close until evidence recorded) + Test Session Budget: <=1 session>"
+    },
+    {
+      "key": "p1-s2-be",
+      "story": "Story 2: <name>",
+      "title": "[<feature>][P1.S2] <title>",
+      "type": "task",
+      "priority": 1,
+      "labels": ["<feature>", "phase-1", "be"],
+      "depends_on": ["p1-s1-be"],
+      "description": "<...>"
+    }
+  ]
+}
+```
