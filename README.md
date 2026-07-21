@@ -142,7 +142,7 @@ Implementation mode sau khi planning đã tạo beads. Luồng bắt buộc:
 
 1. Chạy `br ready --json` và chỉ chọn bead trong danh sách ready.
 2. Lock ownership bằng `br update <id> --status=in_progress`.
-3. Claim qua Agent Mail và reserve file surface nhỏ nhất.
+3. Ghi ownership/scope rõ ràng; dùng Herdr cho execution transport và Git worktree riêng khi có nhiều writer.
 4. Load bead-scoped context, không scan cả repo.
 5. Dùng Serena/GitNexus để phân tích impact trước khi edit.
 6. Implement BE/API/DB trước, rồi FE/UI nếu có.

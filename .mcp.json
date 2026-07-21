@@ -16,13 +16,6 @@
         "false"
       ]
     },
-    "mcp-agent-mail": {
-      "type": "http",
-      "url": "http://127.0.0.1:8765/mcp/",
-      "headers": {
-        "Authorization": "Bearer xxx"
-      }
-    },
     "exa": {
       "type": "http",
       "url": "https://mcp.exa.ai/mcp?exaApiKey=xxx",

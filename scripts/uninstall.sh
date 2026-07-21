@@ -14,8 +14,8 @@
 #    4. Restore hooks: .claude/settings.json -> ~/.claude/settings.json
 #    5. Restore MCP config: .mcp.json -> ~/.mcp.json
 #    6. Remove .gitnexus knowledge graph
-#    7. Remove AGENTS.md + cleanup empty .claude directories
-#    8. Uninstall gitnexus globally
+#    7. Cleanup empty .claude directories
+#    8. Uninstall gitnexus globally (shared Herdr/br/bv binaries are kept)
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -45,7 +45,6 @@ PROJECT_HOOK_FILE="$PROJECT_HOOK_DIR/gitnexus-hook.cjs"
 PROJECT_SKILLS_DIR="$PROJECT_CLAUDE_DIR/skills/gitnexus"
 PROJECT_GITNEXUS="$PROJECT_ROOT/.gitnexus"
 CLAUDE_MD="$PROJECT_ROOT/CLAUDE.md"
-AGENTS_MD="$PROJECT_ROOT/AGENTS.md"
 
 echo -e "\n${BOLD}GitNexus Uninstall${NC} — ${PROJECT_ROOT}\n"
 
@@ -187,15 +186,8 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-step "7/8 — Remove AGENTS.md + cleanup empty .claude directories"
+step "7/8 — Cleanup empty .claude directories"
 # ─────────────────────────────────────────────────────────────────────────────
-if [[ -f "$AGENTS_MD" ]]; then
-  rm -f "$AGENTS_MD"
-  ok "AGENTS.md removed"
-else
-  warn "AGENTS.md not found -- skipping"
-fi
-
 # Xoa thu muc hook neu rong
 [[ -d "$PROJECT_HOOK_DIR" ]] && rmdir --ignore-fail-on-non-empty "$PROJECT_HOOK_DIR" 2>/dev/null || true
 
@@ -231,8 +223,9 @@ echo "    - <!--gitnexus--> block in CLAUDE.md"
 echo "    - .gitnexus knowledge graph"
 echo "    - .claude/hooks/gitnexus/gitnexus-hook.cjs"
 echo "    - Project MCP + hook entries"
-echo "    - AGENTS.md"
 echo "    - gitnexus npm global package"
+echo ""
+echo "  Kept shared runtimes: herdr, br, bv"
 echo ""
 echo -e "  ${YELLOW}Next step:${NC} Restart Claude Code to unload MCP server."
 echo ""

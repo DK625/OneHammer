@@ -11,15 +11,16 @@
 #  What it does:
 #    1. Installs into the CURRENT DIRECTORY (or --target/ONEHAMMER_TARGET_DIR
 #       when set) — run it from your project root.
-#    2. Checks prerequisites (git, curl, node, npm) and ensures jq.
+#    2. Checks prerequisites (git, curl, awk, node, npm) and ensures jq.
 #    3. Shallow-clones the OneHammer source into a temp directory.
 #    4. Validates all mandatory source paths BEFORE touching the target.
 #    5. Copies the project scaffold: .claude/hooks, the managed skills
-#       (planning, onehammer-forge), .claude/settings.json,
+#       (planning and onehammer-forge, including bundled Herdr references),
+#       .claude/settings.json,
 #       and .mcp.json — backing up differing JSON configs.
-#    6. Installs/wires the planning toolchain: br, bv, GitNexus, Beads
-#       workspace, and the user-level GitNexus hook (this logic used to live
-#       in scripts/setup-planning-toolchain.sh and is now inlined here).
+#    6. Installs/wires Herdr and the planning toolchain: br, bv, GitNexus,
+#       Beads workspace, and the user-level GitNexus hook (this logic used to
+#       live in scripts/setup-planning-toolchain.sh and is now inlined here).
 #    7. Verifies everything and prints a summary.
 #
 #  Environment overrides (CLI flags take precedence):
@@ -28,6 +29,7 @@
 #    ONEHAMMER_TARGET_DIR   default <current directory>
 #    ONEHAMMER_FORCE        default 0
 #    ONEHAMMER_ANALYZE      default 0
+#    ONEHAMMER_HERDR_INSTALL_URL default https://herdr.dev/install.sh
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -37,6 +39,7 @@ SOURCE_REF="${ONEHAMMER_SOURCE_REF:-master}"
 TARGET_DIR="${ONEHAMMER_TARGET_DIR:-}"
 FORCE_INSTALL="${ONEHAMMER_FORCE:-0}"
 RUN_ANALYZE="${ONEHAMMER_ANALYZE:-0}"
+HERDR_INSTALL_URL="${ONEHAMMER_HERDR_INSTALL_URL:-https://herdr.dev/install.sh}"
 
 LOCAL_BIN="$HOME/.local/bin"
 USER_HOOK_DIR="${GITNEXUS_USER_HOOK_DIR:-$HOME/.claude/hooks/gitnexus}"
@@ -83,7 +86,7 @@ Options:
 
 Environment variables (CLI arguments win):
   ONEHAMMER_SOURCE_REPO, ONEHAMMER_SOURCE_REF, ONEHAMMER_TARGET_DIR,
-  ONEHAMMER_FORCE, ONEHAMMER_ANALYZE
+  ONEHAMMER_FORCE, ONEHAMMER_ANALYZE, ONEHAMMER_HERDR_INSTALL_URL
 EOF
 }
 
@@ -128,7 +131,7 @@ resolve_target_root() {
 check_prerequisites() {
   PHASE="preflight"
   local cmd
-  for cmd in git curl node npm; do
+  for cmd in git curl awk node npm; do
     command -v "$cmd" >/dev/null 2>&1 \
       || die "$cmd is required before installing OneHammer"
   done
@@ -319,6 +322,28 @@ install_scaffold() {
 }
 
 # ── Planning toolchain (formerly scripts/setup-planning-toolchain.sh) ────────
+
+install_herdr() {
+  PHASE="toolchain-herdr"
+
+  mkdir -p "$LOCAL_BIN"
+  export PATH="$LOCAL_BIN:$PATH"
+
+  if [[ "$FORCE_INSTALL" == "1" ]] || ! command -v herdr >/dev/null 2>&1; then
+    log "installing Herdr latest to $LOCAL_BIN"
+    if ! curl -fsSL --retry 3 --connect-timeout 10 --max-time 30 "$HERDR_INSTALL_URL" \
+      | HERDR_INSTALL_DIR="$LOCAL_BIN" sh; then
+      die "failed to install Herdr from $HERDR_INSTALL_URL"
+    fi
+    hash -r
+  else
+    log "Herdr already installed: $(command -v herdr)"
+  fi
+
+  command -v herdr >/dev/null 2>&1 || die "herdr binary is still not on PATH after install"
+  herdr --version >/dev/null 2>&1 || die "herdr --version failed"
+  log "Herdr health ok: $(herdr --version)"
+}
 
 install_planning_clis() {
   PHASE="toolchain-clis"
@@ -515,6 +540,7 @@ verify_installation() {
   bv --help >/dev/null 2>&1 || die "bv health check failed"
   jq --version >/dev/null 2>&1 || die "jq health check failed"
   gitnexus --help >/dev/null 2>&1 || die "gitnexus health check failed"
+  herdr --version >/dev/null 2>&1 || die "herdr health check failed"
 }
 
 print_summary() {
@@ -528,12 +554,13 @@ print_summary() {
   log "bv: $(command -v bv)"
   log "jq: $(command -v jq)"
   log "gitnexus: $(command -v gitnexus)"
+  log "herdr: $(command -v herdr)"
   if [[ -n "$BACKUP_DIR" ]]; then
     log "previous configuration backed up under: $BACKUP_DIR"
   fi
   case ":$PATH:" in
     *":$LOCAL_BIN:"*) ;;
-    *) warn "add $LOCAL_BIN to your PATH to use br/bv in new shells" ;;
+    *) warn "add $LOCAL_BIN to your PATH to use br/bv/herdr in new shells" ;;
   esac
   log "restart Claude Code to reload project settings"
 }
@@ -552,6 +579,7 @@ main() {
   validate_source
   install_scaffold
 
+  install_herdr
   install_planning_clis
   install_gitnexus
   wire_project_settings
